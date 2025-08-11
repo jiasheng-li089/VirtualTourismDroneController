@@ -10,7 +10,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class FileLoggingTree (logFile: File): Timber.DebugTree() {
+class FileLoggingTree (logFile: File, private val targetLevel: Int = Log.INFO): Timber.DebugTree() {
 
     private val writer = BufferedWriter(FileWriter(logFile, true))
 
@@ -23,12 +23,14 @@ class FileLoggingTree (logFile: File): Timber.DebugTree() {
         t: Throwable?,
     ) {
         super.log(priority, tag, message, t)
-        writer.write("${dateFormat.format(Date())}\t$priority\t$tag\t\t$message\n")
-        if (null != t) {
-            writer.write(Log.getStackTraceString(t))
-            writer.write("\n")
+        if (priority >= targetLevel) {
+            writer.write("${dateFormat.format(Date())}\t$priority\t$tag\t\t$message\n")
+            if (null != t) {
+                writer.write(Log.getStackTraceString(t))
+                writer.write("\n")
+            }
+            writer.flush()
         }
-        writer.flush()
     }
 
     fun destroy() {

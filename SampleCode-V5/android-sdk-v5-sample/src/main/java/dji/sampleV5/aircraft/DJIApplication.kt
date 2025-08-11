@@ -30,7 +30,7 @@ open class DJIApplication : Application() {
         // Ensure initialization is called first
         msdkManagerVM.initMobileSDK(this)
 
-        var file = File(this.getExternalFilesDir(null), "LOG")
+        val file = File(this.getExternalFilesDir(null), "LOG")
         if (!file.exists()) {
             file.mkdirs()
         }
