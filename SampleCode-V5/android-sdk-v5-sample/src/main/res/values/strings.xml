@@ -517,5 +517,6 @@ More refer to the release notes." </string>
     <string name="hint_wind_speed">Wind Speed(dm/s)</string>
     <string name="hint_wind_direction">Wind Direction</string>
     <string name="hint_ultrasonic_height">Ultrasonic Height</string>
+    <string name="hint_is_in_simulator_mode">Simulator Mode</string>
 
 </resources>

@@ -35,10 +35,10 @@ import java.util.Random
 
 class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>() {
 
-    private val status = ArrayList<Pair<String, String>>()
+    private val statusList = ArrayList<Pair<String, String>>()
 
     init {
-        status.addAll(
+        statusList.addAll(
             listOf(
                 context.getString(R.string.hint_data_latency) to "-1",
                 context.getString(R.string.hint_fetch_video) to "-1",
@@ -47,11 +47,17 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
                 context.getString(R.string.hint_empty) to "",
                 context.getString(R.string.hint_drone_connected) to "-",
                 context.getString(R.string.hint_flight_control_connected) to "-",
+            )
+        )
+        if (BuildConfig.DEBUG) {
+            statusList.add(context.getString(R.string.hint_is_in_simulator_mode) to "-")
+        }
+        statusList.addAll(
+            listOf(
                 context.getString(R.string.hint_empty) to "",
                 context.getString(R.string.hint_drone_initial_position) to "-/-/-",
                 context.getString(R.string.hint_drone_current_position) to "-/-/-",
                 context.getString(R.string.hint_drone_distance_to_ip) to "-/-",
-
             )
         )
     }
@@ -63,13 +69,13 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
         );
     }
 
-    override fun getItemCount(): Int = status.size
+    override fun getItemCount(): Int = statusList.size
 
     @SuppressLint("SetTextI18n")
     override fun onBindViewHolder(holder: BaseViewHolder, position: Int) {
         val text = holder.itemView as TextView
 
-        val item = status[position]
+        val item = statusList[position]
         if (item.second.isEmpty()) {
             text.text = item.first
         } else {
@@ -78,17 +84,17 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
     }
 
     fun updateStatus(string: String, data: String) {
-        for (pos in 0..status.size) {
-            if (status[pos].first == string) {
-                status.removeAt(pos)
-                status.add(pos, string to data)
+        for (pos in 0..statusList.size) {
+            if (statusList[pos].first == string) {
+                statusList.removeAt(pos)
+                statusList.add(pos, string to data)
                 notifyItemChanged(pos)
                 return
             }
         }
 
-        status.add(string to data)
-        notifyItemInserted(status.size - 1)
+        statusList.add(string to data)
+        notifyItemInserted(statusList.size - 1)
     }
 }
 
@@ -167,7 +173,7 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         viewModel.abortBtnStatus.observe(this) {
             binding.btnAbortRemoteControl.updateTextColor(it)
         }
-        viewModel.initialize(this.application)
+
 
         binding.btnStartPublishing.setOnClickListener {
             viewModel.clickPublishBtn()
@@ -180,6 +186,9 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
         binding.btnGetReadyToControl.setOnClickListener {
             viewModel.getReadyForRemoteControl()
+        }
+        binding.btnAbortRemoteControl.setOnClickListener {
+            viewModel.abortDroneControl()
         }
 
         viewModel.requestPermissions.observe(this) {
@@ -202,17 +211,21 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         binding.rvMessage.adapter = MessageAdapter()
         binding.rvStatus.adapter = StatusAdapter(this)
 
+        viewModel.initialize(this.application)
+
         lifecycleScope.launch {
             viewModel.message.collect { msg ->
                 (binding.rvMessage.adapter as? MessageAdapter)?.appendMessage(msg.first, msg.second)
             }
         }
         lifecycleScope.launch {
-            viewModel.monitoringStatus.collect { status ->
-                (binding.rvStatus.adapter as? StatusAdapter)?.updateStatus(
-                    status.first,
-                    status.second
-                )
+            viewModel.monitoringStatus.collect { statusMap ->
+                for (keyAndValue in statusMap.entries) {
+                    (binding.rvStatus.adapter as? StatusAdapter)?.updateStatus(
+                        keyAndValue.key,
+                        keyAndValue.value
+                    )
+                }
             }
         }
     }

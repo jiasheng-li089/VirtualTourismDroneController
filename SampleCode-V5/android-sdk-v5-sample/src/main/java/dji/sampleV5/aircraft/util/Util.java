@@ -2,6 +2,7 @@ package dji.sampleV5.aircraft.util;
 
 
 import android.content.Context;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.Display;
 import android.view.WindowManager;
@@ -215,6 +216,9 @@ public class Util {
         return shifted/magnitude;
     }
 
+    public static boolean isMainThread() {
+        return Looper.getMainLooper() == Looper.myLooper();
+    }
 }
 
 

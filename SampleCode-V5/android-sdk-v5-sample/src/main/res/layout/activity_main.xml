@@ -361,7 +361,7 @@
         android:text="Get Byte Stream"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/view_info_panel"
-        app:layout_constraintTop_toBottomOf="@+id/btn_live_stream_test"/>
+        app:layout_constraintTop_toBottomOf="@+id/btn_live_stream_test" />
 
     <Button
         android:id="@+id/btn_virtual_stick_fragment"
@@ -371,25 +371,34 @@
         android:text="Virtual Stick Fragment"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/view_info_panel"
-        app:layout_constraintTop_toBottomOf="@+id/btn_get_byte_stream"/>
+        app:layout_constraintTop_toBottomOf="@+id/btn_get_byte_stream" />
 
     <Button
         android:id="@+id/btn_drone_streaming"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Drone Streaming Fragment"
         android:layout_marginTop="@dimen/uxsdk_15_dp"
+        android:text="Drone Streaming Fragment"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btn_virtual_stick_fragment"
-        app:layout_constraintStart_toEndOf="@+id/view_info_panel"/>
+        app:layout_constraintStart_toEndOf="@+id/view_info_panel"
+        app:layout_constraintTop_toBottomOf="@+id/btn_virtual_stick_fragment" />
 
     <Button
         android:id="@+id/btn_gps_measurement"
         android:layout_width="wrap_content"
-        app:layout_constraintStart_toEndOf="@+id/view_info_panel"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btn_drone_streaming"
+        android:layout_height="wrap_content"
         android:text="GPS measurement"
-        android:layout_height="wrap_content"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/view_info_panel"
+        app:layout_constraintTop_toBottomOf="@+id/btn_drone_streaming" />
+
+    <Button
+        android:id="@+id/btn_simulator_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:text="Simulator Mode"
+        app:layout_constraintStart_toEndOf="@+id/view_info_panel"
+        app:layout_constraintTop_toBottomOf="@+id/btn_gps_measurement" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

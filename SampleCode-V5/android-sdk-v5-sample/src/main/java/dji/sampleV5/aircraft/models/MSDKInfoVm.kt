@@ -2,23 +2,31 @@ package dji.sampleV5.aircraft.models
 
 import android.util.Log
 import androidx.lifecycle.MutableLiveData
+import com.google.android.gms.location.LocationServices
+import dji.sampleV5.aircraft.DJIApplication
 import dji.sampleV5.aircraft.data.DEFAULT_STR
 import dji.sampleV5.aircraft.data.MSDKInfo
 import dji.sampleV5.aircraft.data.NO_NETWORK_STR
 import dji.sampleV5.aircraft.data.ONLINE_STR
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.ProductKey
+import dji.sdk.keyvalue.value.common.LocationCoordinate2D
+import dji.v5.common.callback.CommonCallbacks
+import dji.v5.common.error.IDJIError
 import dji.v5.et.create
 import dji.v5.et.get
 import dji.v5.et.listen
 import dji.v5.manager.KeyManager
 import dji.v5.manager.SDKManager
+import dji.v5.manager.aircraft.simulator.InitializationSettings
+import dji.v5.manager.aircraft.simulator.SimulatorManager
 import dji.v5.manager.areacode.AreaCodeChangeListener
 import dji.v5.manager.areacode.AreaCodeManager
 import dji.v5.manager.ldm.LDMManager
 import dji.v5.network.DJINetworkManager
 import dji.v5.network.IDJINetworkStatusListener
 import dji.v5.utils.common.LogUtils
+import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -130,5 +138,31 @@ class MSDKInfoVm : DJIViewModel() {
         msdkInfo.value?.isLDMEnabled = LDMManager.getInstance().isLDMEnabled.toString()
         msdkInfo.value?.isLDMLicenseLoaded = LDMManager.getInstance().isLDMLicenseLoaded.toString()
         refreshMSDKInfo()
+    }
+
+    fun clickSimulatorMode(latitude: Double, longitude: Double) {
+        if (SimulatorManager.getInstance().isSimulatorEnabled) {
+            SimulatorManager.getInstance().disableSimulator(object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() {
+                    Timber.i("Disable simulator mode successfully")
+                }
+
+                override fun onFailure(p0: IDJIError) {
+                    Timber.e("Failed to disable simulator mode (${p0.errorCode()}): ${p0.hint()}")
+                }
+            })
+        } else {
+            val setting = InitializationSettings(LocationCoordinate2D(latitude, longitude), 23)
+            SimulatorManager.getInstance().enableSimulator(setting, object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() {
+                    Timber.i("Enable simulator mode successfully")
+                }
+
+                override fun onFailure(p0: IDJIError) {
+                    Timber.e("Failed to enable simulator mode (${p0.errorCode()}): ${p0.hint()}")
+                }
+
+            })
+        }
     }
 }

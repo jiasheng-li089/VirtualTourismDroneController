@@ -11,6 +11,7 @@ import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.gms.location.LocationServices
 import dji.sampleV5.aircraft.databinding.ActivityMainBinding
 import dji.sampleV5.aircraft.models.BaseMainActivityVm
 import dji.sampleV5.aircraft.models.MSDKInfoVm
@@ -77,8 +78,8 @@ abstract class DJIMainActivity : AppCompatActivity() {
         // 需要校验这种情况，业界标准做法，基本所有app都需要这个
         if (!isTaskRoot && intent.hasCategory(Intent.CATEGORY_LAUNCHER) && Intent.ACTION_MAIN == intent.action) {
 
-                finish()
-                return
+            finish()
+            return
 
         }
 
@@ -120,6 +121,7 @@ abstract class DJIMainActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     fun clickEventInitialization() {
         binding.btnDroneStreaming.setOnClickListener {
             if (USE_DRONE_CAMERA && true != binding.btnDroneStreaming.tag) {
@@ -137,9 +139,19 @@ abstract class DJIMainActivity : AppCompatActivity() {
 //            }
             startActivity(Intent(this, GPSMeasurementActivity::class.java))
         }
+
+        binding.btnSimulatorMode.setOnClickListener {
+            LocationServices.getFusedLocationProviderClient(this).lastLocation.addOnSuccessListener { loc ->
+                msdkInfoVm.clickSimulatorMode(loc.latitude, loc.longitude)
+            }
+        }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (checkPermission()) {
             handleAfterPermissionPermitted()
@@ -160,9 +172,12 @@ abstract class DJIMainActivity : AppCompatActivity() {
     @SuppressLint("SetTextI18n")
     private fun initMSDKInfoView() {
         msdkInfoVm.msdkInfo.observe(this) {
-            binding.textViewVersion.text = StringUtils.getResStr(R.string.sdk_version, it.SDKVersion + " " + it.buildVer)
-            binding.textViewProductName.text = StringUtils.getResStr(R.string.product_name, it.productType.name)
-            binding.textViewPackageProductCategory.text = StringUtils.getResStr(R.string.package_product_category, it.packageProductCategory)
+            binding.textViewVersion.text =
+                StringUtils.getResStr(R.string.sdk_version, it.SDKVersion + " " + it.buildVer)
+            binding.textViewProductName.text =
+                StringUtils.getResStr(R.string.product_name, it.productType.name)
+            binding.textViewPackageProductCategory.text =
+                StringUtils.getResStr(R.string.package_product_category, it.packageProductCategory)
             binding.textViewIsDebug.text = StringUtils.getResStr(R.string.is_sdk_debug, it.isDebug)
             binding.textCoreInfo.text = it.coreInfo.toString()
             binding.btnDroneStreaming.tag = it.isConnected
@@ -199,7 +214,8 @@ abstract class DJIMainActivity : AppCompatActivity() {
                 showToast("Register Failure: ${resultPair.second}")
                 statusText = StringUtils.getResStr(this, R.string.unregistered)
             }
-            binding.textViewRegistered.text = StringUtils.getResStr(R.string.registration_status, statusText)
+            binding.textViewRegistered.text =
+                StringUtils.getResStr(R.string.registration_status, statusText)
         }
 
         msdkManagerVM.lvProductConnectionState.observe(this) { resultPair ->

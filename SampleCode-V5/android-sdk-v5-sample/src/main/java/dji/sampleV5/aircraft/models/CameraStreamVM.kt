@@ -2,7 +2,6 @@ package dji.sampleV5.aircraft.models
 
 import android.Manifest
 import android.app.Application
-import android.location.Location
 import android.util.ArrayMap
 import android.util.Log
 import androidx.core.content.PermissionChecker
@@ -11,9 +10,10 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import dji.sampleV5.aircraft.BuildConfig
 import dji.sampleV5.aircraft.R
-import dji.sampleV5.aircraft.utils.DroneStatusCallback
-import dji.sampleV5.aircraft.utils.DroneStatusHelper
+import dji.sampleV5.aircraft.virtualcontroller.DroneStatusMonitor
+import dji.sampleV5.aircraft.virtualcontroller.VirtualController
 import dji.sampleV5.aircraft.webrtc.ConnectionInfo
 import dji.sampleV5.aircraft.webrtc.DATA_RECEIVER
 import dji.sampleV5.aircraft.webrtc.DJIVideoCapturer
@@ -29,17 +29,9 @@ import dji.sampleV5.aircraft.webrtc.EVENT_RECEIVED_DATA
 import dji.sampleV5.aircraft.webrtc.VIDEO_PUBLISHER
 import dji.sampleV5.aircraft.webrtc.WebRtcEvent
 import dji.sampleV5.aircraft.webrtc.WebRtcManager
-import dji.sdk.keyvalue.key.BatteryKey
-import dji.sdk.keyvalue.key.DJIKeyInfo
-import dji.sdk.keyvalue.key.FlightControllerKey
-import dji.sdk.keyvalue.key.ProductKey
-import dji.sdk.keyvalue.value.common.Attitude
-import dji.sdk.keyvalue.value.common.LocationCoordinate3D
-import dji.sdk.keyvalue.value.flightcontroller.WindDirection
-import dji.sdk.keyvalue.value.flightcontroller.WindWarning
-import dji.v5.et.create
-import dji.v5.et.listen
-import dji.v5.manager.KeyManager
+import dji.v5.manager.aircraft.simulator.SimulatorManager
+import dji.v5.manager.aircraft.simulator.SimulatorState
+import dji.v5.manager.aircraft.simulator.SimulatorStatusListener
 import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.functions.Consumer
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +53,7 @@ import timber.log.Timber
 
 private const val TAG = "CameraStreamVM"
 
-const val USE_DRONE_CAMERA = false
+const val USE_DRONE_CAMERA = true
 
 private const val PING_INTERVAL = 1000L
 
@@ -85,7 +77,7 @@ data class RootMessage(
     val from: String,
 )
 
-class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
+class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListener {
 
     private lateinit var webRtcManager: WebRtcManager
     private lateinit var eventDisposable: Disposable
@@ -102,7 +94,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
     val abortBtnStatus = MutableLiveData<Boolean>()
 
     val monitoringStatus =
-        MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = Int.MAX_VALUE)
+        MutableSharedFlow<Map<String, String>>(extraBufferCapacity = Int.MAX_VALUE)
 
     private var videoCapturer: VideoCapturer? = null
 
@@ -117,12 +109,9 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
 
     private var eventHandles: ArrayMap<String, (WebRtcEvent) -> Unit> = ArrayMap()
 
-    private var droneStatusHandle: ArrayMap<DJIKeyInfo<*>, Pair<String, (Any?) -> String?>> =
-        ArrayMap()
+    private var statusMonitor: DroneStatusMonitor? = null
 
-    private var statusHelper: DroneStatusHelper? = null
-
-    private var droneInitialLocation: LocationCoordinate3D? = null
+    private var droneController: VirtualController? = null
 
     fun initialize(application: Application) {
         this.application = application
@@ -134,8 +123,32 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
         publishBtnStatus.value = true
         abortBtnStatus.value = true
 
-        initializeDroneStatueHandle()
         initializeEventHandles()
+
+        statusMonitor = DroneStatusMonitor(application, viewModelScope) {
+            emitMonitorStatus(it)
+
+            droneController?.let { controller ->
+                if (controller.isDroneReady) {
+
+                } else {
+
+                }
+            }
+        }
+        statusMonitor?.startMonitoring()
+        droneController = VirtualController(viewModelScope, statusMonitor!!)
+
+        if (BuildConfig.DEBUG) {
+            SimulatorManager.getInstance().addSimulatorStateListener(this)
+
+            val result = R.string.hint_is_in_simulator_mode.idToString() to if (SimulatorManager.getInstance().isSimulatorEnabled) {
+                "Yes"
+            } else {
+                "No"
+            }
+            emitMonitorStatus(mapOf(result))
+        }
     }
 
     fun clickPublishBtn() {
@@ -188,6 +201,11 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
         }
 
         // direct the drone to fly to an initial position
+        droneController?.prepareDrone()
+    }
+
+    fun abortDroneControl() {
+        droneController?.abort()
     }
 
     override fun accept(event: WebRtcEvent) {
@@ -200,15 +218,10 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
 
         webRtcManager.stop()
 
-        statusHelper?.stopListen()
-    }
+        statusMonitor?.stopMonitoring()
 
-    override fun onChange(key: DJIKeyInfo<*>, value: Any?) {
-        droneStatusHandle.getOrDefault(key, null)?.let {
-            val newValue = it.second.invoke(value)
-            if (null == newValue) return@let
-
-            emitMonitorStatus(it.first, newValue)
+        if (BuildConfig.DEBUG) {
+            SimulatorManager.getInstance().removeSimulatorStateListener(this)
         }
     }
 
@@ -224,93 +237,16 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
                     if (msgTime >= lastDataLatencyTime) {
                         lastDataLatencyTime = msgTime
                         // calculate data latency
-                        emitMonitorStatus(
-                            application.getString(R.string.hint_data_latency),
-                            ((System.currentTimeMillis() - lastDataLatencyTime) / 2).toString()
-                        )
+                        val result =
+                            R.string.hint_data_latency.idToString() to ((System.currentTimeMillis() - lastDataLatencyTime) / 2).toString()
+                        emitMonitorStatus(mapOf(result))
+                        Timber.i("${result.first} --> ${result.second}}")
                     }
                 }
             }
         }
     }
 
-    private fun initializeDroneStatueHandle() {
-        val distanceResult = FloatArray(1)
-
-        // drone is connected
-        droneStatusHandle[ProductKey.KeyConnection] = R.string.hint_drone_connected.idToString() to {
-            (it as? Boolean)?.let { connected->
-                if (connected) "Yes" else "No"
-            }
-        }
-
-        // drone flight control is connected
-        droneStatusHandle[FlightControllerKey.KeyConnection] = R.string.hint_flight_control_connected.idToString() to {
-            (it as? Boolean)?.let { connected->
-                if (connected) "Yes" else "No"
-            }
-        }
-
-        // monitor drone location and distance to initial location
-        droneStatusHandle[FlightControllerKey.KeyAircraftLocation3D] =
-            R.string.hint_drone_current_position.idToString() to {
-                val location: LocationCoordinate3D? = it as? LocationCoordinate3D
-                location?.let { l ->
-                    val locationString = "${l.latitude} / ${l.longitude} / ${l.altitude}"
-
-                    // calculate the distance from current location to initial location
-                    droneInitialLocation?.let { iL ->
-                        val horizontalDistance =
-                            Location.distanceBetween(
-                                l.latitude,
-                                l.longitude,
-                                iL.latitude,
-                                iL.longitude,
-                                distanceResult
-                            )
-                        val verticalDistance = l.altitude - iL.altitude
-                        emitMonitorStatus(
-                            R.string.hint_drone_distance_to_ip.idToString(),
-                            "$horizontalDistance / $verticalDistance"
-                        )
-                    }
-
-                    locationString
-                }
-            }
-
-        // monitor drone attitude
-        droneStatusHandle[FlightControllerKey.KeyAircraftAttitude] = R.string.hint_drone_attitude.idToString() to {
-            (it as? Attitude)?.let { attitude ->
-                "${attitude.yaw} / ${attitude.roll} / ${attitude.pitch}"
-            }
-        }
-
-        // monitor battery temperature
-        droneStatusHandle[BatteryKey.KeyBatteryTemperature] = R.string.hint_battery_temperature.idToString() to {
-            it?.toString()
-        }
-
-        // monitor wind warning
-        droneStatusHandle[FlightControllerKey.KeyWindWarning] = R.string.hint_wind_warning.idToString() to {
-            (it as? WindWarning)?.name
-        }
-        // wind speed
-        droneStatusHandle[FlightControllerKey.KeyWindSpeed] = R.string.hint_wind_speed.idToString() to {
-            it?.toString()
-        }
-        // wind direction
-        droneStatusHandle[FlightControllerKey.KeyWindDirection] = R.string.hint_wind_direction.idToString() to {
-            (it as? WindDirection)?.name
-        }
-        // ultrasonic height
-        droneStatusHandle[FlightControllerKey.KeyUltrasonicHeight] = R.string.hint_ultrasonic_height.idToString() to {
-            it?.toString()
-        }
-
-        statusHelper = DroneStatusHelper(droneStatusHandle.keys.toList(), this)
-        statusHelper?.startListen()
-    }
 
     private fun initializeEventHandles() {
         eventHandles[EVENT_CREATE_CONNECTION_SUCCESS_FOR_PUBLICATION] = {
@@ -393,19 +329,18 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
                         )
                     ) {
                         it.value.members["framesPerSecond"]?.let { fps ->
-                            emitMonitorStatus(
-                                R.string.hint_push_video.idToString(),
-                                fps.toString()
-                            )
+                            val result = R.string.hint_push_video.idToString() to fps.toString()
+                            emitMonitorStatus(mapOf(result))
+                            Timber.i("${result.first} --> ${result.second}}")
                         }
                     }
                 }
 
                 (videoCapturer as? DJIVideoCapturer)?.let {
-                    emitMonitorStatus(
-                        R.string.hint_fetch_video.idToString(),
-                        it.fetchFrameRate().toString()
-                    )
+                    val result =
+                        R.string.hint_fetch_video.idToString() to it.fetchFrameRate().toString()
+                    emitMonitorStatus(mapOf(result))
+                    Timber.i("${result.first} --> ${result.second}}")
                 }
             }
         }
@@ -469,11 +404,10 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
         sender.parameters = parameters
     }
 
-    private fun emitMonitorStatus(key: String, value: String) {
+    private fun emitMonitorStatus(keyAndValue: Map<String, String>) {
         viewModelScope.launch(Dispatchers.Main) {
-            monitoringStatus.emit(key to value)
+            monitoringStatus.emit(keyAndValue)
         }
-        Timber.i("$key: $value")
     }
 
     private fun createCameraCapturer(enumerator: Camera2Enumerator): CameraVideoCapturer? {
@@ -514,5 +448,9 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, DroneStatusCallback {
         viewModelScope.launch {
             message.emit(level to msg)
         }
+    }
+
+    override fun onUpdate(state: SimulatorState) {
+        TODO("Not yet implemented")
     }
 }
