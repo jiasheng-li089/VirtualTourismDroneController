@@ -14,7 +14,11 @@
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rv_status"
-            android:layout_width="@dimen/uxsdk_300_dp"
+            android:paddingStart="@dimen/uxsdk_10_dp"
+            android:paddingVertical="@dimen/uxsdk_10_dp"
+            android:clipToPadding="false"
+            android:clipChildren="false"
+            android:layout_width="@dimen/uxsdk_350_dp"
             tools:listitem="@layout/item_monitoring_status"
             android:layout_height="match_parent"/>
 
@@ -25,7 +29,7 @@
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rv_message"
-            android:layout_width="@dimen/uxsdk_300_dp"
+            android:layout_width="@dimen/uxsdk_350_dp"
             tools:listitem="@layout/item_message_info"
             android:layout_height="match_parent" />
 

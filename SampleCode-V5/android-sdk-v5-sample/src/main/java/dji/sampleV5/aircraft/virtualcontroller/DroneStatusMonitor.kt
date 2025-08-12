@@ -24,9 +24,9 @@ typealias OnRawDataObserver = (DJIKeyInfo<*>, Any?) -> Unit
 
 interface RawDataObservable {
 
-    fun register(observer: OnRawDataObserver): OnRawDataObserver
+    fun register(key: DJIKeyInfo<*>, observer: OnRawDataObserver): OnRawDataObserver
 
-    fun unregister(observer: OnRawDataObserver)
+    fun unregister(key: DJIKeyInfo<*>, observer: OnRawDataObserver)
 }
 
 
@@ -36,7 +36,7 @@ class DroneStatusMonitor(
     private val statusNotifier: (Map<String, String>) -> Unit,
 ) : DroneStatusCallback, RawDataObservable {
 
-    private var rawDataObserver: HashSet<OnRawDataObserver> = HashSet()
+    private var rawDataObserver = HashMap<String, HashSet<OnRawDataObserver>>()
 
     private var droneStatusHandle: ArrayMap<DJIKeyInfo<*>, Pair<String, (Any?) -> String?>> =
         ArrayMap()
@@ -67,30 +67,42 @@ class DroneStatusMonitor(
         notifyRawData(key, value)
     }
 
-    override fun register(observer: (DJIKeyInfo<*>, Any?) -> Unit): (DJIKeyInfo<*>, Any?) -> Unit {
+    override fun register(
+        key: DJIKeyInfo<*>,
+        observer: (DJIKeyInfo<*>, Any?) -> Unit,
+    ): (DJIKeyInfo<*>, Any?) -> Unit {
         if (Util.isMainThread()) {
-            rawDataObserver.add(observer)
+            (rawDataObserver.get(key.innerIdentifier) ?: let {
+                val set = HashSet<OnRawDataObserver>()
+                rawDataObserver[key.innerIdentifier] = set
+                set
+            }).add(observer)
         } else {
             scope.launch(Dispatchers.Main) {
-                rawDataObserver.add(observer)
+                register(key, observer)
             }
         }
         return observer
     }
 
-    override fun unregister(observer: OnRawDataObserver) {
+    override fun unregister(key: DJIKeyInfo<*>, observer: OnRawDataObserver) {
         if (Util.isMainThread()) {
-            rawDataObserver.remove(observer)
+            (rawDataObserver.get(key.innerIdentifier) ?: let {
+                val set = HashSet<OnRawDataObserver>()
+                rawDataObserver[key.innerIdentifier] = set
+                set
+            }).add(observer)
         } else {
             scope.launch(Dispatchers.Main) {
-                rawDataObserver.remove(observer)
+                unregister(key, observer)
             }
         }
     }
 
     private fun notifyRawData(key: DJIKeyInfo<*>, value: Any?) {
         scope.launch(Dispatchers.Main) {
-            for (tmp in rawDataObserver) {
+            val set = rawDataObserver.get(key.innerIdentifier) ?: setOf()
+            for (tmp in set) {
                 tmp.invoke(key, value)
             }
         }
@@ -109,7 +121,7 @@ class DroneStatusMonitor(
             R.string.hint_drone_connected.idToString() to {
                 (it as? Boolean)?.let { connected ->
                     if (connected) "Yes" else "No"
-                }
+                } ?: "N/A"
             }
 
         // drone flight control is connected
@@ -117,7 +129,7 @@ class DroneStatusMonitor(
             R.string.hint_flight_control_connected.idToString() to {
                 (it as? Boolean)?.let { connected ->
                     if (connected) "Yes" else "No"
-                }
+                } ?: "N/A"
             }
 
         // monitor drone location and distance to initial location
@@ -125,21 +137,24 @@ class DroneStatusMonitor(
             R.string.hint_drone_current_position.idToString() to {
                 val location: LocationCoordinate3D? = it as? LocationCoordinate3D
                 location?.let { l ->
-                    val locationString = "${l.latitude} / ${l.longitude} / ${l.altitude}"
+                    val locationString =
+                        "${l.latitude} / ${l.longitude} / ${"%.2f".format(l.altitude)}"
 
                     // calculate the distance from current location to initial location
                     droneInitialLocation?.let { iL ->
-                        val horizontalDistance =
-                            Location.distanceBetween(
-                                l.latitude,
-                                l.longitude,
-                                iL.latitude,
-                                iL.longitude,
-                                distanceResult
-                            )
+                        Location.distanceBetween(
+                            l.latitude,
+                            l.longitude,
+                            iL.latitude,
+                            iL.longitude,
+                            distanceResult
+                        )
                         val verticalDistance = l.altitude - iL.altitude
                         val result =
-                            R.string.hint_drone_distance_to_ip.idToString() to "$horizontalDistance / $verticalDistance"
+                            R.string.hint_drone_distance_to_ip.idToString() to "%.2f / %.2f".format(
+                                distanceResult[0],
+                                verticalDistance
+                            )
                         statusNotifier.invoke(mapOf(result))
                         Timber.i("${result.first} --> ${result.second}}")
                     }
@@ -152,36 +167,43 @@ class DroneStatusMonitor(
         droneStatusHandle[FlightControllerKey.KeyAircraftAttitude] =
             R.string.hint_drone_attitude.idToString() to {
                 (it as? Attitude)?.let { attitude ->
-                    "${attitude.yaw} / ${attitude.roll} / ${attitude.pitch}"
-                }
+                    "%.2f / %.2f / %.2f".format(attitude.yaw, attitude.roll, attitude.pitch)
+                } ?: "N/A"
             }
 
         // monitor battery temperature
         droneStatusHandle[BatteryKey.KeyBatteryTemperature] =
             R.string.hint_battery_temperature.idToString() to {
-                it?.toString()
+                if (null != it) "%.2f".format(it) else "N/A"
             }
 
         // monitor wind warning
         droneStatusHandle[FlightControllerKey.KeyWindWarning] =
             R.string.hint_wind_warning.idToString() to {
-                (it as? WindWarning)?.name
+                (it as? WindWarning)?.name ?: "N/A"
             }
         // wind speed
         droneStatusHandle[FlightControllerKey.KeyWindSpeed] =
             R.string.hint_wind_speed.idToString() to {
-                it?.toString()
+                it?.toString() ?: "N/A"
             }
         // wind direction
         droneStatusHandle[FlightControllerKey.KeyWindDirection] =
             R.string.hint_wind_direction.idToString() to {
-                (it as? WindDirection)?.name
+                (it as? WindDirection)?.name ?: "N/A"
             }
         // ultrasonic height
         droneStatusHandle[FlightControllerKey.KeyUltrasonicHeight] =
             R.string.hint_ultrasonic_height.idToString() to {
-                it?.toString()
+                if (null != it) it.toString() else "N/A"
             }
+
+        // INFO taking off altitude, unreliable status, should not be used for any use cases
+        // returns a negative value, which is considered as an invalid value while placing the drone on the ground.
+//        droneStatusHandle[FlightControllerKey.KeyTakeoffLocationAltitude] =
+//            R.string.hint_taking_off_altitude.idToString() to {
+//                if (null != it) "%.2f".format(it) else "N/A"
+//            }
 
         statusHelper = DroneStatusHelper(droneStatusHandle.keys.toList(), this)
     }

@@ -47,10 +47,16 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
                 context.getString(R.string.hint_empty) to "",
                 context.getString(R.string.hint_drone_connected) to "-",
                 context.getString(R.string.hint_flight_control_connected) to "-",
+                context.getString(R.string.hint_remote_control) to "Not Ready"
             )
         )
         if (BuildConfig.DEBUG) {
-            statusList.add(context.getString(R.string.hint_is_in_simulator_mode) to "-")
+            statusList.addAll(
+                listOf(
+                    context.getString(R.string.hint_is_in_simulator_mode) to "-",
+                    context.getString(R.string.hint_simulator_state) to "-"
+                )
+            )
         }
         statusList.addAll(
             listOf(
@@ -84,7 +90,7 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
     }
 
     fun updateStatus(string: String, data: String) {
-        for (pos in 0..statusList.size) {
+        for (pos in 0..statusList.size - 1) {
             if (statusList[pos].first == string) {
                 statusList.removeAt(pos)
                 statusList.add(pos, string to data)

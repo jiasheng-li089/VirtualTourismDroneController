@@ -129,11 +129,12 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             emitMonitorStatus(it)
 
             droneController?.let { controller ->
-                if (controller.isDroneReady) {
-
+                Timber.d("If the drone is ready: ${controller.isDroneReady}")
+                emitMonitorStatus(mapOf(R.string.hint_remote_control.idToString() to if (controller.isDroneReady) {
+                    "Ready"
                 } else {
-
-                }
+                    "Not Ready"
+                }))
             }
         }
         statusMonitor?.startMonitoring()
@@ -195,12 +196,13 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
     }
 
     fun getReadyForRemoteControl() {
-        if (true != getReadyStatus.value) {
-            showMessageOnLogAndScreen(Log.ERROR, "The headset is not online yet")
-            return
-        }
+//        if (true != getReadyStatus.value) {
+//            showMessageOnLogAndScreen(Log.ERROR, "The headset is not online yet")
+//            return
+//        }
 
         // direct the drone to fly to an initial position
+        Timber.d("User click 'prepare for remote control'")
         droneController?.prepareDrone()
     }
 
@@ -307,8 +309,10 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
         }
         eventHandles[EVENT_LOG_MESSAGE] = {
-            (it.data as? Pair<Int, String>)?.let { data ->
-                showMessageOnLogAndScreen(data.first, data.second)
+            (it.data as? Pair<*, *>)?.let { data ->
+                if (data.first is Int && data.second is String) {
+                    showMessageOnLogAndScreen(data.first as Int, data.second as String)
+                }
             }
         }
     }
@@ -450,7 +454,20 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         }
     }
 
+    private fun Float.format(): String {
+        return "%.2f".format(this)
+    }
+
     override fun onUpdate(state: SimulatorState) {
-        TODO("Not yet implemented")
+        val roll = state.roll.format()
+        val yaw = state.yaw.format()
+        val pitch = state.pitch.format()
+        val x = state.positionX.format()
+        val y = state.positionY.format()
+        val z = state.positionZ.format()
+        val simulatorState = "Flying-> ${state.isFlying}\tMotorsOn->${state.areMotorsOn()}\nRYP->$roll/$yaw/$pitch\nPosition(XYZ)->$x/$y/$z"
+        // don't log the simulator state into logcat or file, because it is very frequent while in the simulator mode (everything is too ideal)
+//        Timber.d("Simulator mode status: $simulatorState")
+        emitMonitorStatus(mapOf(R.string.hint_simulator_state.idToString() to simulatorState))
     }
 }
