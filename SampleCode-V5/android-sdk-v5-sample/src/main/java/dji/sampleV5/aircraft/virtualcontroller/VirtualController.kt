@@ -31,7 +31,8 @@ class VirtualController(
 
     private var locationRetriever: OnRawDataObserver? = null
 
-    @Volatile private var initialLocation: LocationCoordinate3D? = null
+    @Volatile var initialLocation: LocationCoordinate3D? = null
+        private set
 
     override fun invoke(key: DJIKeyInfo<*>, value: Any?) {
     }

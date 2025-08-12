@@ -20,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
 import dji.sampleV5.aircraft.databinding.ActivityCameraStreamBinding
 import dji.sampleV5.aircraft.models.CameraStreamVM
 import dji.sampleV5.aircraft.utils.BaseViewHolder
@@ -40,30 +41,36 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
     init {
         statusList.addAll(
             listOf(
-                context.getString(R.string.hint_data_latency) to "-1",
-                context.getString(R.string.hint_fetch_video) to "-1",
-                context.getString(R.string.hint_push_video) to "-1",
-                context.getString(R.string.hint_control_frequency) to "-1",
-                context.getString(R.string.hint_empty) to "",
-                context.getString(R.string.hint_drone_connected) to "-",
-                context.getString(R.string.hint_flight_control_connected) to "-",
-                context.getString(R.string.hint_remote_control) to "Not Ready"
+                R.string.hint_data_latency.idToString() to "-1",
+                R.string.hint_fetch_video.idToString() to "-1",
+                R.string.hint_push_video.idToString() to "-1",
+                R.string.hint_control_frequency.idToString() to "-1",
+                R.string.hint_empty.idToString() to "",
+                R.string.hint_drone_connected.idToString() to "-",
+                R.string.hint_connection_signal.idToString() to "N/A",
+                R.string.hint_connection_capability.idToString() to "N/A",
+                R.string.hint_empty.idToString() to "",
+                R.string.hint_flight_control_connected.idToString() to "-",
+                R.string.hint_virtual_stick_state.idToString() to "-/-",
+                R.string.hint_remote_control.idToString() to "N/A"
             )
         )
         if (BuildConfig.DEBUG) {
             statusList.addAll(
                 listOf(
-                    context.getString(R.string.hint_is_in_simulator_mode) to "-",
-                    context.getString(R.string.hint_simulator_state) to "-"
+                    R.string.hint_empty.idToString() to "",
+                    R.string.hint_is_in_simulator_mode.idToString() to "-",
+                    R.string.hint_simulator_state.idToString() to "-"
                 )
             )
         }
         statusList.addAll(
             listOf(
-                context.getString(R.string.hint_empty) to "",
-                context.getString(R.string.hint_drone_initial_position) to "-/-/-",
-                context.getString(R.string.hint_drone_current_position) to "-/-/-",
-                context.getString(R.string.hint_drone_distance_to_ip) to "-/-",
+                R.string.hint_empty.idToString() to "",
+                R.string.hint_drone_initial_position.idToString() to "-/-/-",
+                R.string.hint_drone_current_position.idToString() to "-/-/-",
+                R.string.hint_drone_distance_to_ip.idToString() to "-/-",
+                R.string.hint_empty.idToString() to "",
             )
         )
     }

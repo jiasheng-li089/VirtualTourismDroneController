@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:background="@color/gray"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/gray">
 
     <LinearLayout
         android:id="@+id/ll_information"
@@ -14,13 +15,13 @@
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rv_status"
-            android:paddingStart="@dimen/uxsdk_10_dp"
-            android:paddingVertical="@dimen/uxsdk_10_dp"
-            android:clipToPadding="false"
-            android:clipChildren="false"
             android:layout_width="@dimen/uxsdk_350_dp"
-            tools:listitem="@layout/item_monitoring_status"
-            android:layout_height="match_parent"/>
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingVertical="@dimen/uxsdk_10_dp"
+            android:paddingStart="@dimen/uxsdk_10_dp"
+            tools:listitem="@layout/item_monitoring_status" />
 
         <View
             android:layout_width="0dp"
@@ -30,8 +31,8 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rv_message"
             android:layout_width="@dimen/uxsdk_350_dp"
-            tools:listitem="@layout/item_message_info"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            tools:listitem="@layout/item_message_info" />
 
     </LinearLayout>
 
@@ -69,7 +70,65 @@
             android:id="@+id/btn_abort_remote_control"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Abort Remote control"
-            android:layout_gravity="center_horizontal|bottom"/>
+            android:layout_gravity="center_horizontal|bottom"
+            android:text="Abort Remote control" />
     </LinearLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center">
+
+        <Button
+            android:id="@+id/btn_forward"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="forward"
+            app:layout_constraintBottom_toTopOf="@+id/btn_reset"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/btn_reset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="STOP"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/btn_backward"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="forward"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/btn_reset" />
+
+        <Button
+            android:id="@+id/btn_left"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="left"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toLeftOf="@+id/btn_reset"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/btn_right"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="right"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toRightOf="@+id/btn_reset"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
 </FrameLayout>

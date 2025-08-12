@@ -1,6 +1,8 @@
 package dji.sampleV5.aircraft
 
+import android.annotation.SuppressLint
 import android.app.Application
+import android.content.Context
 import dji.sampleV5.aircraft.log.FileLoggingTree
 import dji.sampleV5.aircraft.models.MSDKManagerVM
 import dji.sampleV5.aircraft.models.globalViewModels
@@ -26,6 +28,7 @@ open class DJIApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        context = this
 
         // Ensure initialization is called first
         msdkManagerVM.initMobileSDK(this)
@@ -51,8 +54,15 @@ open class DJIApplication : Application() {
 
         private lateinit var logFile: File
 
+        @SuppressLint("StaticFieldLeak")
+        private lateinit var context: Context
+
         fun getLogFile(): File {
             return logFile
+        }
+
+        fun Int.idToString(): String {
+            return context.getString(this)
         }
     }
 }

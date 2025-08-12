@@ -3,18 +3,30 @@ package dji.sampleV5.aircraft.virtualcontroller
 import android.content.Context
 import android.location.Location
 import android.util.ArrayMap
+import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.util.Util
 import dji.sampleV5.aircraft.utils.DroneStatusCallback
 import dji.sampleV5.aircraft.utils.DroneStatusHelper
+import dji.sampleV5.aircraft.utils.format
+import dji.sdk.keyvalue.key.AirLinkKey
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
+import dji.sdk.keyvalue.value.flightcontroller.FlightControlAuthorityChangeReason
 import dji.sdk.keyvalue.value.flightcontroller.WindDirection
 import dji.sdk.keyvalue.value.flightcontroller.WindWarning
+import dji.v5.manager.aircraft.perception.PerceptionManager
+import dji.v5.manager.aircraft.perception.data.ObstacleData
+import dji.v5.manager.aircraft.perception.data.PerceptionInfo
+import dji.v5.manager.aircraft.perception.listener.ObstacleDataListener
+import dji.v5.manager.aircraft.perception.listener.PerceptionInformationListener
+import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
+import dji.v5.manager.aircraft.virtualstick.VirtualStickState
+import dji.v5.manager.aircraft.virtualstick.VirtualStickStateListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,10 +43,9 @@ interface RawDataObservable {
 
 
 class DroneStatusMonitor(
-    private val context: Context,
     private val scope: CoroutineScope,
     private val statusNotifier: (Map<String, String>) -> Unit,
-) : DroneStatusCallback, RawDataObservable {
+) : DroneStatusCallback, RawDataObservable, VirtualStickStateListener, PerceptionInformationListener, ObstacleDataListener {
 
     private var rawDataObserver = HashMap<String, HashSet<OnRawDataObserver>>()
 
@@ -43,16 +54,25 @@ class DroneStatusMonitor(
 
     private var statusHelper: DroneStatusHelper? = null
 
-    private var droneInitialLocation: LocationCoordinate3D? = null
+    var droneInitialLocation: LocationCoordinate3D? = null
+
     fun startMonitoring() {
         if (null == statusHelper) {
             initializeDroneStatueHandle()
         }
         statusHelper?.startListen()
+
+        VirtualStickManager.getInstance().setVirtualStickStateListener(this)
+        PerceptionManager.getInstance().addPerceptionInformationListener(this)
+        PerceptionManager.getInstance().addObstacleDataListener(this)
     }
 
     fun stopMonitoring() {
         statusHelper?.stopListen()
+
+        VirtualStickManager.getInstance().removeVirtualStickStateListener(this)
+        PerceptionManager.getInstance().removePerceptionInformationListener(this)
+        PerceptionManager.getInstance().removeObstacleDataListener(this)
     }
 
     override fun onChange(key: DJIKeyInfo<*>, value: Any?) {
@@ -60,8 +80,7 @@ class DroneStatusMonitor(
             val newValue = it.second.invoke(value)
             if (null == newValue) return@let
 
-            statusNotifier.invoke(mapOf(it.first to newValue))
-            Timber.i("${it.first}: $newValue")
+            notifyUpdate(mapOf(it.first to newValue))
         }
         Timber.d("$key --> ${value?.toString() ?: "null"}")
         notifyRawData(key, value)
@@ -108,11 +127,6 @@ class DroneStatusMonitor(
         }
     }
 
-
-    private fun Int.idToString(): String {
-        return context.getString(this)
-    }
-
     private fun initializeDroneStatueHandle() {
         val distanceResult = FloatArray(1)
 
@@ -155,7 +169,7 @@ class DroneStatusMonitor(
                                 distanceResult[0],
                                 verticalDistance
                             )
-                        statusNotifier.invoke(mapOf(result))
+                        notifyUpdate(mapOf(result))
                         Timber.i("${result.first} --> ${result.second}}")
                     }
 
@@ -174,7 +188,7 @@ class DroneStatusMonitor(
         // monitor battery temperature
         droneStatusHandle[BatteryKey.KeyBatteryTemperature] =
             R.string.hint_battery_temperature.idToString() to {
-                if (null != it) "%.2f".format(it) else "N/A"
+                (it as? Float)?.format() ?: "N/A"
             }
 
         // monitor wind warning
@@ -195,7 +209,21 @@ class DroneStatusMonitor(
         // ultrasonic height
         droneStatusHandle[FlightControllerKey.KeyUltrasonicHeight] =
             R.string.hint_ultrasonic_height.idToString() to {
-                if (null != it) it.toString() else "N/A"
+                it?.toString() ?: "N/A"
+            }
+        // air connection quality
+        droneStatusHandle[AirLinkKey.KeySignalQuality] =
+            R.string.hint_connection_signal.idToString() to {
+                when (it) {
+                    in 60..200 -> "Good"
+                    in 40..59 -> "Normal"
+                    in 0..39 -> "Bad"
+                    else -> "N/A"
+                }
+            }
+        droneStatusHandle[AirLinkKey.KeyDynamicDataRate] =
+            R.string.hint_connection_capability.idToString() to {
+                (it as? Float)?.format() ?: "N/A"
             }
 
         // INFO taking off altitude, unreliable status, should not be used for any use cases
@@ -206,5 +234,29 @@ class DroneStatusMonitor(
 //            }
 
         statusHelper = DroneStatusHelper(droneStatusHandle.keys.toList(), this)
+    }
+
+    override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
+        val result =
+            "${if (stickState.isVirtualStickEnable) "Y" else "N"}/${if (stickState.isVirtualStickAdvancedModeEnabled) "Y" else "N"}"
+        notifyUpdate(mapOf(R.string.hint_virtual_stick_state.idToString() to result))
+    }
+
+    override fun onChangeReasonUpdate(reason: FlightControlAuthorityChangeReason) {
+    }
+
+    private fun notifyUpdate(map: Map<String, String>) {
+        statusNotifier.invoke(map)
+        for (keyValue in map.entries) {
+            Timber.i("${keyValue.key}: ${keyValue.value}")
+        }
+    }
+
+    override fun onUpdate(information: PerceptionInfo) {
+
+    }
+
+    override fun onUpdate(obstacleData: ObstacleData?) {
+
     }
 }

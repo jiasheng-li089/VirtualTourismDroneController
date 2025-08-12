@@ -11,7 +11,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import dji.sampleV5.aircraft.BuildConfig
+import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
 import dji.sampleV5.aircraft.R
+import dji.sampleV5.aircraft.utils.format
 import dji.sampleV5.aircraft.virtualcontroller.DroneStatusMonitor
 import dji.sampleV5.aircraft.virtualcontroller.VirtualController
 import dji.sampleV5.aircraft.webrtc.ConnectionInfo
@@ -125,16 +127,34 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
         initializeEventHandles()
 
-        statusMonitor = DroneStatusMonitor(application, viewModelScope) {
+        statusMonitor = DroneStatusMonitor(viewModelScope) {
             emitMonitorStatus(it)
 
             droneController?.let { controller ->
                 Timber.d("If the drone is ready: ${controller.isDroneReady}")
-                emitMonitorStatus(mapOf(R.string.hint_remote_control.idToString() to if (controller.isDroneReady) {
-                    "Ready"
+                emitMonitorStatus(
+                    mapOf(
+                        R.string.hint_remote_control.idToString() to if (controller.isDroneReady) {
+                            "Ready"
+                        } else {
+                            "Not Ready"
+                        }
+                    )
+                )
+
+                val loc = controller.initialLocation
+                if (controller.isDroneReady && null != loc) {
+                    if (statusMonitor?.droneInitialLocation != loc) {
+                        statusMonitor?.droneInitialLocation = loc
+                    }
+                    emitMonitorStatus(
+                        mapOf(
+                            R.string.hint_drone_initial_position.idToString() to "${loc.latitude} / ${loc.longitude} / ${loc.altitude.format()}"
+                        )
+                    )
                 } else {
-                    "Not Ready"
-                }))
+                    emitMonitorStatus(mapOf(R.string.hint_drone_initial_position.idToString() to "N/A"))
+                }
             }
         }
         statusMonitor?.startMonitoring()
@@ -143,11 +163,12 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         if (BuildConfig.DEBUG) {
             SimulatorManager.getInstance().addSimulatorStateListener(this)
 
-            val result = R.string.hint_is_in_simulator_mode.idToString() to if (SimulatorManager.getInstance().isSimulatorEnabled) {
-                "Yes"
-            } else {
-                "No"
-            }
+            val result =
+                R.string.hint_is_in_simulator_mode.idToString() to if (SimulatorManager.getInstance().isSimulatorEnabled) {
+                    "Yes"
+                } else {
+                    "No"
+                }
             emitMonitorStatus(mapOf(result))
         }
     }
@@ -208,6 +229,34 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
     fun abortDroneControl() {
         droneController?.abort()
+    }
+
+    fun flightToDirection(direction: Int) {
+        if (droneController?.isDroneReady != true) {
+            return
+        }
+        when (direction) {
+            1 -> { // forward
+
+            }
+
+            2 -> { // backward
+
+            }
+
+            3 -> { // left
+
+            }
+
+            4 -> { // right
+
+            }
+
+            else -> {
+                // reset
+
+            }
+        }
     }
 
     override fun accept(event: WebRtcEvent) {
@@ -442,10 +491,6 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         return reqPermissions
     }
 
-    private fun Int.idToString(): String {
-        return application.getString(this)
-    }
-
     private fun showMessageOnLogAndScreen(level: Int, msg: String, exception: Throwable? = null) {
         Timber.log(level, exception, msg)
 
@@ -454,9 +499,6 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         }
     }
 
-    private fun Float.format(): String {
-        return "%.2f".format(this)
-    }
 
     override fun onUpdate(state: SimulatorState) {
         val roll = state.roll.format()
@@ -465,7 +507,8 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         val x = state.positionX.format()
         val y = state.positionY.format()
         val z = state.positionZ.format()
-        val simulatorState = "Flying-> ${state.isFlying}\tMotorsOn->${state.areMotorsOn()}\nRYP->$roll/$yaw/$pitch\nPosition(XYZ)->$x/$y/$z"
+        val simulatorState =
+            "Flying-> ${state.isFlying}\tMotorsOn->${state.areMotorsOn()}\nRYP->$roll/$yaw/$pitch\nPosition(XYZ)->$x/$y/$z"
         // don't log the simulator state into logcat or file, because it is very frequent while in the simulator mode (everything is too ideal)
 //        Timber.d("Simulator mode status: $simulatorState")
         emitMonitorStatus(mapOf(R.string.hint_simulator_state.idToString() to simulatorState))
