@@ -43,6 +43,11 @@ open class DJIApplication : Application() {
 
         tree = FileLoggingTree(logFile)
         Timber.plant(tree!!)
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, e->
+            Timber.e(e)
+            tree?.destroy()
+        }
     }
 
     override fun onTerminate() {

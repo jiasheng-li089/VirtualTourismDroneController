@@ -1,8 +1,9 @@
 package dji.sampleV5.aircraft.virtualcontroller
 
-import android.content.Context
 import android.location.Location
+import android.os.SystemClock
 import android.util.ArrayMap
+import android.util.Log
 import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.util.Util
@@ -17,6 +18,8 @@ import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.flightcontroller.FlightControlAuthorityChangeReason
+import dji.sdk.keyvalue.value.flightcontroller.FlightMode
+import dji.sdk.keyvalue.value.flightcontroller.RemoteControllerFlightMode
 import dji.sdk.keyvalue.value.flightcontroller.WindDirection
 import dji.sdk.keyvalue.value.flightcontroller.WindWarning
 import dji.v5.manager.aircraft.perception.PerceptionManager
@@ -31,6 +34,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import kotlin.math.abs
 
 typealias OnRawDataObserver = (DJIKeyInfo<*>, Any?) -> Unit
 
@@ -41,11 +45,14 @@ interface RawDataObservable {
     fun unregister(key: DJIKeyInfo<*>, observer: OnRawDataObserver)
 }
 
+private const val DEFAULT_OBSTACLE_DISTANCE = 6000
 
 class DroneStatusMonitor(
     private val scope: CoroutineScope,
+    private val messageNotifier: (Int, String, Throwable?) -> Unit,
     private val statusNotifier: (Map<String, String>) -> Unit,
-) : DroneStatusCallback, RawDataObservable, VirtualStickStateListener, PerceptionInformationListener, ObstacleDataListener {
+) : DroneStatusCallback, RawDataObservable, VirtualStickStateListener,
+    PerceptionInformationListener, ObstacleDataListener {
 
     private var rawDataObserver = HashMap<String, HashSet<OnRawDataObserver>>()
 
@@ -54,7 +61,10 @@ class DroneStatusMonitor(
 
     private var statusHelper: DroneStatusHelper? = null
 
+    private val obstacleCaches = ArrayMap<Int, Pair<Int, Long>>()
+
     var droneInitialLocation: LocationCoordinate3D? = null
+
 
     fun startMonitoring() {
         if (null == statusHelper) {
@@ -190,6 +200,13 @@ class DroneStatusMonitor(
             R.string.hint_battery_temperature.idToString() to {
                 (it as? Float)?.format() ?: "N/A"
             }
+        // battery remaining capacity
+        droneStatusHandle[BatteryKey.KeyChargeRemainingInPercent] =
+            R.string.hint_battery_capacity.idToString() to {
+                (it as? Int)?.let { percentage ->
+                    "${percentage}%"
+                } ?: "N/A"
+            }
 
         // monitor wind warning
         droneStatusHandle[FlightControllerKey.KeyWindWarning] =
@@ -226,13 +243,22 @@ class DroneStatusMonitor(
                 (it as? Float)?.format() ?: "N/A"
             }
 
+        // flight model
+        droneStatusHandle[FlightControllerKey.KeyFlightMode] =
+            R.string.hint_flight_mode.idToString() to {
+                (it as? FlightMode)?.name ?: "N/A"
+            }
+        droneStatusHandle[FlightControllerKey.KeyRemoteControllerFlightMode] =
+            R.string.hint_remote_controller_flight_mode.idToString() to {
+                (it as? RemoteControllerFlightMode)?.name ?: "N/A"
+            }
+
         // INFO taking off altitude, unreliable status, should not be used for any use cases
         // returns a negative value, which is considered as an invalid value while placing the drone on the ground.
 //        droneStatusHandle[FlightControllerKey.KeyTakeoffLocationAltitude] =
 //            R.string.hint_taking_off_altitude.idToString() to {
 //                if (null != it) "%.2f".format(it) else "N/A"
 //            }
-
         statusHelper = DroneStatusHelper(droneStatusHandle.keys.toList(), this)
     }
 
@@ -253,10 +279,51 @@ class DroneStatusMonitor(
     }
 
     override fun onUpdate(information: PerceptionInfo) {
-
+        notifyUpdate(mapOf(R.string.hint_obstacle_avoidance_type.idToString() to information.obstacleAvoidanceType.name))
     }
 
     override fun onUpdate(obstacleData: ObstacleData?) {
+        obstacleData?.let { obstacle ->
+            if (DEFAULT_OBSTACLE_DISTANCE == obstacle.downwardObstacleDistance
+                && DEFAULT_OBSTACLE_DISTANCE == obstacle.upwardObstacleDistance
+            ) {
+                if (obstacle.horizontalObstacleDistance.isNullOrEmpty()
+                    || obstacle.horizontalObstacleDistance[obstacle.horizontalAngleInterval] == DEFAULT_OBSTACLE_DISTANCE
+                ) {
+                    return
+                }
+            }
 
+            // temporarily disable logging if the horizontal distance array is empty
+            if (obstacle.horizontalObstacleDistance.isNullOrEmpty()) return
+
+            val newDistance =
+                obstacle.horizontalObstacleDistance[obstacle.horizontalAngleInterval]
+            (obstacleCaches[obstacle.horizontalAngleInterval] ?: let {
+                val cache: Pair<Int, Long> = Int.MAX_VALUE to SystemClock.elapsedRealtime()
+                obstacleCaches[obstacle.horizontalAngleInterval] = cache
+                cache
+            }).let { newPair ->
+                if (abs(newDistance - newPair.first) < abs(newPair.first / 10f)
+                    && SystemClock.elapsedRealtime() - newPair.second < 1000L
+                ) {
+                    // the frequency of calling back is too high, which flushes the logs on screen, therefore,
+                    // only log on the screen if the distance changes significantly or after a period of time.
+                    return
+                } else {
+                    obstacleCaches[obstacle.horizontalAngleInterval] =
+                        newDistance to SystemClock.elapsedRealtime()
+                }
+            }
+
+            val msg =
+                "Detected obstacle:  down->${(obstacle.downwardObstacleDistance / 1000f).format()}" +
+                        "\tup->${(obstacle.upwardObstacleDistance / 1000f).format()}" +
+                        "\tangle interval->${obstacle.horizontalAngleInterval}" +
+                        "\thorizontal distance->${(newDistance / 1000f).format()}"
+            messageNotifier.invoke(Log.WARN, msg, null)
+        } ?: {
+            Timber.d("Received obstacle update, but got invalid data")
+        }
     }
 }

@@ -127,7 +127,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
         initializeEventHandles()
 
-        statusMonitor = DroneStatusMonitor(viewModelScope) {
+        statusMonitor = DroneStatusMonitor(viewModelScope, this::showMessageOnLogAndScreen) {
             emitMonitorStatus(it)
 
             droneController?.let { controller ->
@@ -158,7 +158,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             }
         }
         statusMonitor?.startMonitoring()
-        droneController = VirtualController(viewModelScope, statusMonitor!!)
+        droneController = VirtualController(viewModelScope, statusMonitor!!, this::showMessageOnLogAndScreen)
 
         if (BuildConfig.DEBUG) {
             SimulatorManager.getInstance().addSimulatorStateListener(this)
@@ -232,29 +232,35 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
     }
 
     fun flightToDirection(direction: Int) {
-        if (droneController?.isDroneReady != true) {
-            return
-        }
+        // comment this check for debugging
+//        if (droneController?.isDroneReady != true) {
+//            return
+//        }
         when (direction) {
-            1 -> { // forward
-
+            R.id.btn_forward -> { // forward
+                showMessageOnLogAndScreen(Log.DEBUG, "Press forward")
+                droneController?.changeDroneVelocity(-0.5, period = 500)
             }
 
-            2 -> { // backward
-
+            R.id.btn_backward -> { // backward
+                showMessageOnLogAndScreen(Log.DEBUG, "Press backward")
+                droneController?.changeDroneVelocity(0.5, period = 500)
             }
 
-            3 -> { // left
-
+            R.id.btn_left -> { // left
+                showMessageOnLogAndScreen(Log.DEBUG, "Press left")
+                droneController?.changeDroneVelocity(rightLeft = -0.5, period = 500)
             }
 
-            4 -> { // right
-
+            R.id.btn_right -> { // right
+                showMessageOnLogAndScreen(Log.DEBUG, "Press right")
+                droneController?.changeDroneVelocity(rightLeft = 0.5, period = 500)
             }
 
             else -> {
                 // reset
-
+                showMessageOnLogAndScreen(Log.DEBUG, "Press reset")
+                droneController?.changeDroneVelocity(period = 0)
             }
         }
     }
@@ -270,6 +276,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         webRtcManager.stop()
 
         statusMonitor?.stopMonitoring()
+        droneController?.destroy()
 
         if (BuildConfig.DEBUG) {
             SimulatorManager.getInstance().removeSimulatorStateListener(this)

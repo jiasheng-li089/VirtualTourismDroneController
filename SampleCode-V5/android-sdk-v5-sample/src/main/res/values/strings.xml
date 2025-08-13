@@ -513,6 +513,7 @@ More refer to the release notes." </string>
     <string name="hint_drone_distance_to_ip">Distance to IP(m)</string>
     <string name="hint_drone_attitude">Drone Attitude (Y/R/P)</string>
     <string name="hint_battery_temperature" tools:ignore="TypographyOther">Battery Temp.(C)</string>
+    <string name="hint_battery_capacity">Battery Capacity</string>
     <string name="hint_wind_warning">Wind Warning</string>
     <string name="hint_wind_speed">Wind Speed(dm/s)</string>
     <string name="hint_wind_direction">Wind Direction</string>
@@ -524,5 +525,8 @@ More refer to the release notes." </string>
     <string name="hint_connection_signal">Connection Quality</string>
     <string name="hint_connection_capability">Connection Capability(Mb/s)</string>
     <string name="hint_virtual_stick_state">Virtual Stick</string>
+    <string name="hint_flight_mode">Flight Mode</string>
+    <string name="hint_remote_controller_flight_mode">RC Flight Mode</string>
+    <string name="hint_obstacle_avoidance_type">Obstacle Avoidance Type</string>
 
 </resources>

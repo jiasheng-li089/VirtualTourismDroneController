@@ -16,6 +16,15 @@ class FileLoggingTree (logFile: File, private val targetLevel: Int = Log.INFO): 
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
 
+    private val priorities = mapOf(
+        Log.VERBOSE to "V",
+        Log.DEBUG to "D",
+        Log.INFO to "I",
+        Log.WARN to "W",
+        Log.ERROR to "E",
+        Log.ASSERT to "A",
+    )
+
     override fun log(
         priority: Int,
         tag: String?,
@@ -24,7 +33,7 @@ class FileLoggingTree (logFile: File, private val targetLevel: Int = Log.INFO): 
     ) {
         super.log(priority, tag, message, t)
         if (priority >= targetLevel) {
-            writer.write("${dateFormat.format(Date())}\t$priority\t$tag\t\t$message\n")
+            writer.write("${dateFormat.format(Date())}\t${priorities.getOrDefault(priority, "U")}\t$tag\t\t$message\n")
             if (null != t) {
                 writer.write(Log.getStackTraceString(t))
                 writer.write("\n")

@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.MarginLayoutParams
 import android.widget.FrameLayout
@@ -24,6 +25,7 @@ import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
 import dji.sampleV5.aircraft.databinding.ActivityCameraStreamBinding
 import dji.sampleV5.aircraft.models.CameraStreamVM
 import dji.sampleV5.aircraft.utils.BaseViewHolder
+import dji.sampleV5.aircraft.utils.format
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
@@ -52,8 +54,11 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
                 R.string.hint_empty.idToString() to "",
                 R.string.hint_flight_control_connected.idToString() to "-",
                 R.string.hint_virtual_stick_state.idToString() to "-/-",
-                R.string.hint_remote_control.idToString() to "N/A"
-            )
+                R.string.hint_flight_mode.idToString() to "N/A",
+                R.string.hint_remote_controller_flight_mode.idToString() to "N/A",
+                R.string.hint_remote_control.idToString() to "N/A",
+
+                )
         )
         if (BuildConfig.DEBUG) {
             statusList.addAll(
@@ -117,7 +122,8 @@ class MessageAdapter : RecyclerView.Adapter<BaseViewHolder>() {
     private val colors = mapOf(
         Log.INFO to Color.WHITE,
         Log.WARN to Color.YELLOW,
-        Log.ERROR to Color.RED
+        Log.ERROR to Color.RED,
+        Log.ASSERT to Color.RED
     )
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BaseViewHolder {
@@ -145,12 +151,12 @@ class MessageAdapter : RecyclerView.Adapter<BaseViewHolder>() {
         var timestamp = System.currentTimeMillis()
         val milliseconds = "%03d".format(timestamp % 1000)
         timestamp /= 1000
-        val seconds = timestamp % 60
+        val seconds = (timestamp % 60).toInt().format()
         timestamp /= 60
-        val minutes = timestamp % 60
+        val minutes = (timestamp % 60).toInt().format()
         timestamp /= 60
-        val hours = timestamp % 24
-        message.add("$hours:$minutes:$seconds $milliseconds" to (level to msg))
+        val hours = (timestamp % 24).toInt().format()
+        message.add("$hours:$minutes:$seconds ${milliseconds.toInt().format(3)}" to (level to msg))
         this.notifyItemInserted(message.size - 1)
     }
 }
@@ -174,20 +180,6 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         binding = ActivityCameraStreamBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        viewModel.stopBtnStatus.observe(this) {
-            binding.btnStopPublishing.updateTextColor(it)
-        }
-        viewModel.publishBtnStatus.observe(this) {
-            binding.btnStartPublishing.updateTextColor(it)
-        }
-        viewModel.getReadyStatus.observe(this) {
-            binding.btnGetReadyToControl.updateTextColor(it)
-        }
-        viewModel.abortBtnStatus.observe(this) {
-            binding.btnAbortRemoteControl.updateTextColor(it)
-        }
-
-
         binding.btnStartPublishing.setOnClickListener {
             viewModel.clickPublishBtn()
         }
@@ -203,7 +195,35 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         binding.btnAbortRemoteControl.setOnClickListener {
             viewModel.abortDroneControl()
         }
+        listOf(
+            binding.btnForward,
+            binding.btnBackward,
+            binding.btnLeft,
+            binding.btnRight,
+            binding.btnReset
+        ).forEach { btn ->
+            btn.setOnClickListener {
+                viewModel.flightToDirection(btn.id)
+            }
+        }
+        binding.imgScrollToBottom.setOnClickListener {
+            (binding.rvMessage.layoutManager as? LinearLayoutManager)?.scrollToPosition(
+                binding.rvMessage.adapter!!.itemCount - 1
+            )
+        }
 
+        viewModel.stopBtnStatus.observe(this) {
+            binding.btnStopPublishing.updateTextColor(it)
+        }
+        viewModel.publishBtnStatus.observe(this) {
+            binding.btnStartPublishing.updateTextColor(it)
+        }
+        viewModel.getReadyStatus.observe(this) {
+            binding.btnGetReadyToControl.updateTextColor(it)
+        }
+        viewModel.abortBtnStatus.observe(this) {
+            binding.btnAbortRemoteControl.updateTextColor(it)
+        }
         viewModel.requestPermissions.observe(this) {
             if (it.isNotEmpty()) {
                 requestPermissions(it.toTypedArray(), permissionReqCode)
@@ -222,13 +242,31 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
             it.setHasFixedSize(true)
         }
         binding.rvMessage.adapter = MessageAdapter()
+        val layoutManager = binding.rvMessage.layoutManager as LinearLayoutManager
+        binding.rvMessage.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                val lastVisiblePosition = layoutManager.findLastCompletelyVisibleItemPosition()
+                binding.imgScrollToBottom.visibility =
+                    if (RecyclerView.NO_POSITION == lastVisiblePosition || (lastVisiblePosition + 1) == binding.rvMessage.adapter?.itemCount) {
+                        View.GONE
+                    } else {
+                        View.VISIBLE
+                    }
+            }
+        })
         binding.rvStatus.adapter = StatusAdapter(this)
 
         viewModel.initialize(this.application)
 
         lifecycleScope.launch {
             viewModel.message.collect { msg ->
+                val needToScrollToEnd = binding.imgScrollToBottom.visibility != View.VISIBLE
                 (binding.rvMessage.adapter as? MessageAdapter)?.appendMessage(msg.first, msg.second)
+                if (needToScrollToEnd) {
+                    (binding.rvMessage.layoutManager as? LinearLayoutManager)?.scrollToPosition(
+                        binding.rvMessage.adapter!!.itemCount - 1
+                    )
+                }
             }
         }
         lifecycleScope.launch {
