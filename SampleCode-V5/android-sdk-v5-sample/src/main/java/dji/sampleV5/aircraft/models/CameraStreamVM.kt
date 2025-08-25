@@ -231,7 +231,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         droneController?.abort()
     }
 
-    fun flightToDirection(direction: Int) {
+    fun flightToDirection(direction: Int, velocity: Double) {
         // comment this check for debugging
 //        if (droneController?.isDroneReady != true) {
 //            return
@@ -239,22 +239,22 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         when (direction) {
             R.id.btn_forward -> { // forward
                 showMessageOnLogAndScreen(Log.DEBUG, "Press forward")
-                droneController?.changeDroneVelocity(-0.5, period = 500)
+                droneController?.changeDroneVelocity(-velocity, period = 0)
             }
 
             R.id.btn_backward -> { // backward
                 showMessageOnLogAndScreen(Log.DEBUG, "Press backward")
-                droneController?.changeDroneVelocity(0.5, period = 500)
+                droneController?.changeDroneVelocity(velocity, period = 0)
             }
 
             R.id.btn_left -> { // left
                 showMessageOnLogAndScreen(Log.DEBUG, "Press left")
-                droneController?.changeDroneVelocity(rightLeft = -0.5, period = 500)
+                droneController?.changeDroneVelocity(rightLeft = -velocity, period = 0)
             }
 
             R.id.btn_right -> { // right
                 showMessageOnLogAndScreen(Log.DEBUG, "Press right")
-                droneController?.changeDroneVelocity(rightLeft = 0.5, period = 500)
+                droneController?.changeDroneVelocity(rightLeft = velocity, period = 0)
             }
 
             else -> {

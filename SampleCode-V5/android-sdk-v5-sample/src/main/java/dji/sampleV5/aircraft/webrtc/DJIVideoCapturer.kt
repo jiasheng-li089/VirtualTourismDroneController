@@ -16,6 +16,7 @@ import org.webrtc.VideoFrame
 import timber.log.Timber
 import java.nio.ByteBuffer
 import java.util.LinkedList
+import kotlin.math.abs
 
 class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
 
@@ -29,14 +30,14 @@ class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
             queue.addFirst(timestamp)
             pushVideoToServer(frameData, offset, length, width, height)
 
-            var gap: Long = 0
+            var gap: Long = timestamp
             do {
                 var last = try {
                     queue.last
                 } catch (_: NoSuchElementException) {
-                    null
+                    timestamp
                 }
-                gap = (last?: 0) - timestamp
+                gap = abs(last - timestamp)
                 if (gap >= 1000L) {
                     queue.removeLast()
                 }

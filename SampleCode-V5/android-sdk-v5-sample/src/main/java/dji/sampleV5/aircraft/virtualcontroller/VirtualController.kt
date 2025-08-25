@@ -7,6 +7,7 @@ import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.flightcontroller.FlightCoordinateSystem
 import dji.sdk.keyvalue.value.flightcontroller.RollPitchControlMode
+import dji.sdk.keyvalue.value.flightcontroller.VerticalControlMode
 import dji.sdk.keyvalue.value.flightcontroller.VirtualStickFlightControlParam
 import dji.sdk.keyvalue.value.flightcontroller.YawControlMode
 import dji.v5.common.callback.CommonCallbacks
@@ -15,6 +16,7 @@ import dji.v5.et.action
 import dji.v5.et.get
 import dji.v5.et.set
 import dji.v5.manager.aircraft.perception.PerceptionManager
+import dji.v5.manager.aircraft.perception.data.ObstacleAvoidanceType
 import dji.v5.manager.aircraft.perception.data.PerceptionDirection
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import kotlinx.coroutines.CoroutineScope
@@ -44,26 +46,49 @@ class VirtualController(
     var initialLocation: LocationCoordinate3D? = null
         private set
 
+    private var droneParam: VirtualStickFlightControlParam
+
+    private var sendingCmdJob: Job? = null
+
     init {
-        setObstacleAvoidanceWarningDistance(1.0)
+        setObstacleAvoidanceWarningDistance(0.1)
+        setObstacleAvoidance(false) {
+            VirtualStickManager.getInstance()
+                .enableVirtualStick(object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() {
+                        messageNotifier.invoke(Log.DEBUG, "Enable virtual stick successfully", null)
+                        VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(true)
+                    }
 
-        VirtualStickManager.getInstance()
-            .enableVirtualStick(object : CommonCallbacks.CompletionCallback {
-                override fun onSuccess() {
-                    messageNotifier.invoke(Log.DEBUG, "Enable virtual stick successfully", null)
-                }
+                    override fun onFailure(p0: IDJIError) {
+                        messageNotifier.invoke(
+                            Log.ERROR,
+                            "Failed to enable the virtual stick(${p0.errorCode()}): ${p0.description()}",
+                            null
+                        )
+                    }
 
-                override fun onFailure(p0: IDJIError) {
-                    messageNotifier.invoke(
-                        Log.ERROR,
-                        "Failed to enable the virtual stick(${p0.errorCode()}): ${p0.description()}",
-                        null
-                    )
-                }
+                })
+        }
 
-            })
-        VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(true)
-        setObstacleAvoidance(false)
+        KeyTools.createKey(FlightControllerKey.KeyHeightLimit).set(2, {
+            messageNotifier.invoke(Log.DEBUG, "Set the maximum height of drone successfully", null)
+        }, {
+            messageNotifier.invoke(
+                Log.ERROR,
+                "Failed to set maximum height of drone (${it.errorCode()}): ${it.hint()}",
+                null
+            )
+        })
+
+        droneParam = VirtualStickFlightControlParam()
+        droneParam.yaw = 0.0
+        droneParam.roll = 0.0
+        droneParam.pitch = 0.0
+        droneParam.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
+        droneParam.verticalControlMode = VerticalControlMode.VELOCITY
+        droneParam.yawControlMode = YawControlMode.ANGULAR_VELOCITY
+        droneParam.rollPitchControlMode = RollPitchControlMode.ANGLE
     }
 
     fun prepareDrone(isFlying: Boolean? = null) {
@@ -81,6 +106,7 @@ class VirtualController(
 
                     // already flying, regard current location as the initial location
                     prepareJob = scope.launch(Dispatchers.IO) {
+                        // within indoor environment, the sdk won't return the location of the drone because of no GPS signal, then how to detect the height???
                         locationRetriever = observable.register(locationKey) { key, value ->
                             if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
                                 locationRetriever?.let {
@@ -180,7 +206,7 @@ class VirtualController(
     }
 
     fun destroy() {
-        setObstacleAvoidance(true)
+        setObstacleAvoidance(true, null)
         setObstacleAvoidanceWarningDistance(4.0)
         VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(false)
         VirtualStickManager.getInstance()
@@ -196,7 +222,6 @@ class VirtualController(
                         null
                     )
                 }
-
             })
     }
 
@@ -219,7 +244,15 @@ class VirtualController(
                     "${if (roll >= 0) "Right" else "Left"}: ${abs(roll)}\tRotation: $yaw"
         messageNotifier.invoke(Log.INFO, log, null)
 
-        VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
+        if (null == sendingCmdJob) {
+            sendingCmdJob = scope.launch(Dispatchers.IO) {
+                while (sendingCmdJob?.isActive == true) {
+                    VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
+                    // maximum recommended frequency is 25 Hz
+                    delay(40)
+                }
+            }
+        }
     }
 
     private fun setObstacleAvoidanceWarningDistance(distance: Double) {
@@ -251,19 +284,29 @@ class VirtualController(
         }
     }
 
-    private fun setObstacleAvoidance(enable: Boolean) {
-        listOf(PerceptionDirection.HORIZONTAL, PerceptionDirection.DOWNWARD, PerceptionDirection.UPWARD).forEach { direction ->
-            PerceptionManager.getInstance().setObstacleAvoidanceEnabled(enable, direction,object : CommonCallbacks.CompletionCallback {
+    private fun setObstacleAvoidance(enable: Boolean, action: (() -> Unit)?) {
+        // right here, can use the `setObstacleAvoidanceEnabled` to enable/disable obstacle avoidance in three directions,
+        // because the mini 3 pro does not support this kind of operation
+        PerceptionManager.getInstance().setObstacleAvoidanceType(
+            if (enable) ObstacleAvoidanceType.BYPASS else ObstacleAvoidanceType.CLOSE,
+            object : CommonCallbacks.CompletionCallback {
                 override fun onSuccess() {
-                    messageNotifier.invoke(Log.DEBUG, "${if(enable) "Enable" else "Disable"} obstacle avoidance successfully", null)
+                    messageNotifier.invoke(
+                        Log.DEBUG,
+                        "${if (enable) "Enable" else "Disable"} obstacle avoidance successfully",
+                        null
+                    )
+                    action?.invoke()
                 }
 
                 override fun onFailure(p0: IDJIError) {
-                    messageNotifier.invoke(Log.ERROR, "${if(enable) "Enable" else "Disable"} obstacle avoidance failed (${p0.errorCode()}): ${p0.hint()}", null)
+                    messageNotifier.invoke(
+                        Log.ERROR,
+                        "${if (enable) "Enable" else "Disable"} obstacle avoidance failed (${p0.errorCode()}): ${p0.hint()}",
+                        null
+                    )
                 }
-
             })
-        }
     }
 
     private fun settingHomeLocation() {

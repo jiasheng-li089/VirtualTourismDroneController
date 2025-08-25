@@ -21,6 +21,7 @@
             android:clipToPadding="false"
             android:paddingVertical="@dimen/uxsdk_10_dp"
             android:paddingStart="@dimen/uxsdk_10_dp"
+            android:background="#4D000000"
             tools:listitem="@layout/item_monitoring_status" />
 
         <View
@@ -32,6 +33,7 @@
             android:id="@+id/rv_message"
             android:layout_width="@dimen/uxsdk_350_dp"
             android:layout_height="match_parent"
+            android:background="#4D000000"
             tools:listitem="@layout/item_message_info" />
 
     </LinearLayout>
@@ -112,7 +114,7 @@
             android:id="@+id/btn_backward"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="forward"
+            android:text="backward"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toRightOf="parent"

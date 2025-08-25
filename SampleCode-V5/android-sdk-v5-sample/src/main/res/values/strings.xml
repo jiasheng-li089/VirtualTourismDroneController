@@ -528,5 +528,7 @@ More refer to the release notes." </string>
     <string name="hint_flight_mode">Flight Mode</string>
     <string name="hint_remote_controller_flight_mode">RC Flight Mode</string>
     <string name="hint_obstacle_avoidance_type">Obstacle Avoidance Type</string>
+    <string name="hint_motors_are_on">Motors are On</string>
+    <string name="hint_is_flying">Drone Flying</string>
 
 </resources>

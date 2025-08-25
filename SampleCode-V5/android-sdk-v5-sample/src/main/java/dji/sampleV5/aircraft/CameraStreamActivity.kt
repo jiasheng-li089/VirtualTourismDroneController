@@ -29,6 +29,7 @@ import dji.sampleV5.aircraft.utils.format
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.webrtc.EglBase
 import org.webrtc.SurfaceViewRenderer
@@ -202,8 +203,18 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
             binding.btnRight,
             binding.btnReset
         ).forEach { btn ->
-            btn.setOnClickListener {
-                viewModel.flightToDirection(btn.id)
+            btn.setOnClickListener { view->
+                val velocity = ((view.tag as? Double) ?: 0.0) + 1.0
+                viewModel.flightToDirection(btn.id, velocity)
+                view.tag = velocity
+
+                if (view.id == binding.btnReset.id) {
+                    binding.btnForward.tag = 0
+                    binding.btnBackward.tag = 0
+                    binding.btnLeft.tag = 0
+                    binding.btnRight.tag = 0
+                    binding.btnReset.tag = 0
+                }
             }
         }
         binding.imgScrollToBottom.setOnClickListener {
@@ -258,7 +269,7 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
         viewModel.initialize(this.application)
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.Main) {
             viewModel.message.collect { msg ->
                 val needToScrollToEnd = binding.imgScrollToBottom.visibility != View.VISIBLE
                 (binding.rvMessage.adapter as? MessageAdapter)?.appendMessage(msg.first, msg.second)
@@ -269,7 +280,7 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 }
             }
         }
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.Main) {
             viewModel.monitoringStatus.collect { statusMap ->
                 for (keyAndValue in statusMap.entries) {
                     (binding.rvStatus.adapter as? StatusAdapter)?.updateStatus(

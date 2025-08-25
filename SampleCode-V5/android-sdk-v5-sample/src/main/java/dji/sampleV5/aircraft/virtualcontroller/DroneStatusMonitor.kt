@@ -138,23 +138,21 @@ class DroneStatusMonitor(
     }
 
     private fun initializeDroneStatueHandle() {
+        val yesOrNoCallback: (Any?)-> String? = {
+            (it as? Boolean)?.let { on ->
+                if (on) "Yes" else "No"
+            } ?: "No"
+        }
+
         val distanceResult = FloatArray(1)
 
         // drone is connected
         droneStatusHandle[ProductKey.KeyConnection] =
-            R.string.hint_drone_connected.idToString() to {
-                (it as? Boolean)?.let { connected ->
-                    if (connected) "Yes" else "No"
-                } ?: "N/A"
-            }
+            R.string.hint_drone_connected.idToString() to yesOrNoCallback
 
         // drone flight control is connected
         droneStatusHandle[FlightControllerKey.KeyConnection] =
-            R.string.hint_flight_control_connected.idToString() to {
-                (it as? Boolean)?.let { connected ->
-                    if (connected) "Yes" else "No"
-                } ?: "N/A"
-            }
+            R.string.hint_flight_control_connected.idToString() to yesOrNoCallback
 
         // monitor drone location and distance to initial location
         droneStatusHandle[FlightControllerKey.KeyAircraftLocation3D] =
@@ -194,6 +192,12 @@ class DroneStatusMonitor(
                     "%.2f / %.2f / %.2f".format(attitude.yaw, attitude.roll, attitude.pitch)
                 } ?: "N/A"
             }
+
+        // monitor motors status
+        droneStatusHandle[FlightControllerKey.KeyAreMotorsOn] = R.string.hint_motors_are_on.idToString() to yesOrNoCallback
+
+        // if drone is flying
+        droneStatusHandle[FlightControllerKey.KeyIsFlying] = R.string.hint_is_flying.idToString() to yesOrNoCallback
 
         // monitor battery temperature
         droneStatusHandle[BatteryKey.KeyBatteryTemperature] =
