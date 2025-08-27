@@ -27,6 +27,9 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import kotlin.math.abs
 
+// maximum recommended frequency is 25 Hz
+private const val SENDING_FREQUENCY = 5
+
 class VirtualController(
     private val scope: CoroutineScope,
     private val observable: RawDataObservable,
@@ -50,24 +53,7 @@ class VirtualController(
 
     init {
         setObstacleAvoidanceWarningDistance(0.1)
-        setObstacleAvoidance(false) {
-            VirtualStickManager.getInstance()
-                .enableVirtualStick(object : CommonCallbacks.CompletionCallback {
-                    override fun onSuccess() {
-                        messageNotifier.invoke(Log.DEBUG, "Enable virtual stick successfully", null)
-                        VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(true)
-                    }
-
-                    override fun onFailure(p0: IDJIError) {
-                        messageNotifier.invoke(
-                            Log.ERROR,
-                            "Failed to enable the virtual stick(${p0.errorCode()}): ${p0.description()}",
-                            null
-                        )
-                    }
-
-                })
-        }
+        setObstacleAvoidance(false, null)
 
         KeyTools.createKey(FlightControllerKey.KeyHeightLimit).set(2, {
             messageNotifier.invoke(Log.DEBUG, "Set the maximum height of drone successfully", null)
@@ -86,7 +72,7 @@ class VirtualController(
         droneParam.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
         droneParam.verticalControlMode = VerticalControlMode.VELOCITY
         droneParam.yawControlMode = YawControlMode.ANGULAR_VELOCITY
-        droneParam.rollPitchControlMode = RollPitchControlMode.ANGLE
+        droneParam.rollPitchControlMode = RollPitchControlMode.VELOCITY
     }
 
     private fun getDroneReady(isFlying: Boolean) {
@@ -150,6 +136,9 @@ class VirtualController(
                 if (true == prepareJob?.isActive) {
                     if (null != initialLocation)  settingHomeLocation()
                     isDroneReady = true
+
+                    // only enable advanced param when the drone is ready
+                    changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
                 }
                 prepareJob = null
             }
@@ -203,6 +192,9 @@ class VirtualController(
                     if (null != initialLocation) settingHomeLocation()
                     Timber.d("The drone is ready now")
                     isDroneReady = true
+
+                    // only enable advanced param when the drone is ready
+                    changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
                 }
                 prepareJob = null
             }
@@ -224,12 +216,12 @@ class VirtualController(
     }
 
     fun changeDroneVelocity(
-        backwardForward: Double = 0.0,
+        forwardBackward: Double = 0.0,
         rightLeft: Double = 0.0,
         rotateRightLeft: Double = 0.0,
-        period: Long = 100,
+        period: Long = 1000,
     ) {
-        adjustDroneVelocity(rightLeft, backwardForward, rotateRightLeft)
+        adjustDroneVelocity(forwardBackward, rightLeft, rotateRightLeft)
 
         if (period <= 0) return
 
@@ -243,6 +235,8 @@ class VirtualController(
 
     fun abort() {
         adjustDroneVelocity(0.0, 0.0, 0.0)
+        changeVirtualStickStatus(enable = false, syncAdvancedParam = true)
+
         prepareJob?.cancel()
         prepareJob = null
         isDroneReady = false
@@ -251,36 +245,18 @@ class VirtualController(
     fun destroy() {
         setObstacleAvoidance(true, null)
         setObstacleAvoidanceWarningDistance(4.0)
-        VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(false)
-        VirtualStickManager.getInstance()
-            .disableVirtualStick(object : CommonCallbacks.CompletionCallback {
-                override fun onSuccess() {
-                    messageNotifier.invoke(Log.DEBUG, "Disable virtual stick successfully", null)
-                }
 
-                override fun onFailure(p0: IDJIError) {
-                    messageNotifier.invoke(
-                        Log.ERROR,
-                        "Failed to disable the virtual stick(${p0.errorCode()}): ${p0.hint()}",
-                        null
-                    )
-                }
-            })
+        changeVirtualStickStatus(enable = false, syncAdvancedParam = true)
     }
 
     /**
-     * roll: positive to right, negative to left
-     * pitch: positive to backward, negative to forward
+     * In velocity model, roll means forward/backward, pitch means right/left
      * yaw: positive rotate towards right, negative rotate towards left
      */
     private fun adjustDroneVelocity(roll: Double = 0.0, pitch: Double = 0.0, yaw: Double = 0.0) {
-        val param = VirtualStickFlightControlParam()
-        param.yaw = yaw
-        param.roll = roll
-        param.pitch = pitch
-        param.rollPitchControlMode = RollPitchControlMode.VELOCITY
-        param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
-        param.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
+        droneParam.yaw = yaw
+        droneParam.roll = roll
+        droneParam.pitch = pitch
 
         val log =
             "Change drone's velocity: ${if (pitch > 0) "Backward" else "Forward"}: ${abs(pitch)}\t" +
@@ -290,9 +266,10 @@ class VirtualController(
         if (null == sendingCmdJob) {
             sendingCmdJob = scope.launch(Dispatchers.IO) {
                 while (sendingCmdJob?.isActive == true) {
-                    VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
-                    // maximum recommended frequency is 25 Hz
-                    delay(40)
+                    // don't output the log to screen, there is too much log
+                    Timber.d("Sending advanced stick param to the drone: ${droneParam.toJson()}")
+                    VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(droneParam)
+                    delay(1000L / SENDING_FREQUENCY)
                 }
             }
         }
@@ -350,6 +327,41 @@ class VirtualController(
                     )
                 }
             })
+    }
+
+    private fun changeVirtualStickStatus(enable: Boolean, syncAdvancedParam: Boolean) {
+        if (enable) {
+            VirtualStickManager.getInstance()
+                .enableVirtualStick(object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() {
+                        messageNotifier.invoke(Log.DEBUG, "Enable virtual stick successfully", null)
+
+                        if (syncAdvancedParam) VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(true)
+                    }
+
+                    override fun onFailure(p0: IDJIError) {
+                        messageNotifier.invoke(
+                            Log.ERROR,
+                            "Failed to enable the virtual stick(${p0.errorCode()}): ${p0.hint()}",
+                            null
+                        )
+                    }
+
+                })
+        } else {
+            if (syncAdvancedParam) VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(false)
+
+            VirtualStickManager.getInstance().disableVirtualStick(object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() {
+                    messageNotifier.invoke(Log.DEBUG, "Disable virtual stick successfully", null)
+                }
+
+                override fun onFailure(p0: IDJIError) {
+                    messageNotifier.invoke(Log.ERROR, "Failed to disable the virtual stick(${p0.errorCode()}): ${p0.hint()}", null)
+                }
+
+            })
+        }
     }
 
     private fun settingHomeLocation() {

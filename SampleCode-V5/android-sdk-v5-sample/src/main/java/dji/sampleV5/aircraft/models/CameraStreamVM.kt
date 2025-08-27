@@ -158,7 +158,8 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             }
         }
         statusMonitor?.startMonitoring()
-        droneController = VirtualController(viewModelScope, statusMonitor!!, this::showMessageOnLogAndScreen)
+        droneController =
+            VirtualController(viewModelScope, statusMonitor!!, this::showMessageOnLogAndScreen)
 
         if (BuildConfig.DEBUG) {
             SimulatorManager.getInstance().addSimulatorStateListener(this)
@@ -231,30 +232,41 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         droneController?.abort()
     }
 
-    fun flightToDirection(direction: Int, velocity: Double) {
+    fun flightToDirection(direction: Int) {
         // comment this check for debugging
-//        if (droneController?.isDroneReady != true) {
-//            return
-//        }
+        if (droneController?.isDroneReady != true) {
+            return
+        }
+        val velocity = 0.25
         when (direction) {
             R.id.btn_forward -> { // forward
                 showMessageOnLogAndScreen(Log.DEBUG, "Press forward")
-                droneController?.changeDroneVelocity(-velocity, period = 0)
+                droneController?.changeDroneVelocity(velocity)
             }
 
             R.id.btn_backward -> { // backward
                 showMessageOnLogAndScreen(Log.DEBUG, "Press backward")
-                droneController?.changeDroneVelocity(velocity, period = 0)
+                droneController?.changeDroneVelocity(-velocity)
             }
 
             R.id.btn_left -> { // left
                 showMessageOnLogAndScreen(Log.DEBUG, "Press left")
-                droneController?.changeDroneVelocity(rightLeft = -velocity, period = 0)
+                droneController?.changeDroneVelocity(rightLeft = -velocity)
             }
 
             R.id.btn_right -> { // right
                 showMessageOnLogAndScreen(Log.DEBUG, "Press right")
-                droneController?.changeDroneVelocity(rightLeft = velocity, period = 0)
+                droneController?.changeDroneVelocity(rightLeft = velocity)
+            }
+
+            R.id.btn_rotate_left -> {
+                showMessageOnLogAndScreen(Log.DEBUG, "Press rotate to left")
+                droneController?.changeDroneVelocity(rotateRightLeft = -10.0)
+            }
+
+            R.id.btn_rotate_right -> {
+                showMessageOnLogAndScreen(Log.DEBUG, "Press rotate to right")
+                droneController?.changeDroneVelocity(rotateRightLeft = 10.0)
             }
 
             else -> {

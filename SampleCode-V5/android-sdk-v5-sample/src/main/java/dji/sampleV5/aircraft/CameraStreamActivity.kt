@@ -201,20 +201,12 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
             binding.btnBackward,
             binding.btnLeft,
             binding.btnRight,
-            binding.btnReset
+            binding.btnReset,
+            binding.btnRotateLeft,
+            binding.btnRotateRight
         ).forEach { btn ->
             btn.setOnClickListener { view->
-                val velocity = ((view.tag as? Double) ?: 0.0) + 1.0
-                viewModel.flightToDirection(btn.id, velocity)
-                view.tag = velocity
-
-                if (view.id == binding.btnReset.id) {
-                    binding.btnForward.tag = 0
-                    binding.btnBackward.tag = 0
-                    binding.btnLeft.tag = 0
-                    binding.btnRight.tag = 0
-                    binding.btnReset.tag = 0
-                }
+                viewModel.flightToDirection(btn.id)
             }
         }
         binding.imgScrollToBottom.setOnClickListener {
