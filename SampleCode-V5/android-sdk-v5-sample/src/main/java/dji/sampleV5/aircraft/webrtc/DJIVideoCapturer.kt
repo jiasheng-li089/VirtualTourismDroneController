@@ -20,15 +20,17 @@ import kotlin.math.abs
 
 class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
 
-
     private val queue = LinkedList<Long>()
 
     private val frameListener =
         ICameraStreamManager.CameraFrameListener { frameData, offset, length, width, height, _ ->
+            // the calling thread of this method in unknown, need to be careful
+            currentVideoTimeInNanoSeconds = SystemClock.elapsedRealtimeNanos() - startCaptureTimeNS
+
             // feed the video data to webRtc
             val timestamp = SystemClock.elapsedRealtime()
             queue.addFirst(timestamp)
-            pushVideoToServer(frameData, offset, length, width, height)
+            pushVideoToServer(frameData, offset, length, width, height, currentVideoTimeInNanoSeconds)
 
             var gap: Long = timestamp
             do {
@@ -50,7 +52,11 @@ class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
 
     private lateinit var capturerObserver: CapturerObserver
 
-    private var startCaptureTimeNS = System.nanoTime()
+    private var startCaptureTimeNS = SystemClock.elapsedRealtimeNanos()
+
+    // allowing other component map complementary data to video frame and send to the other end through other channel
+    var currentVideoTimeInNanoSeconds: Long = 0
+        private set
 
     fun fetchFrameRate(): Int = queue.size
 
@@ -67,7 +73,7 @@ class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
         scope.launch(Dispatchers.Main) {
             isCapturing = true
 
-            startCaptureTimeNS = System.nanoTime()
+            startCaptureTimeNS = SystemClock.elapsedRealtimeNanos()
 
             MediaDataCenter.getInstance().cameraStreamManager.addFrameListener(
                 ComponentIndexType.LEFT_OR_MAIN,
@@ -108,13 +114,14 @@ class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
         length: Int,
         width: Int,
         height: Int,
+        videoTimeStampInNanoSeconds: Long
     ) {
         scope.launch(Dispatchers.IO) {
             if (isDisposed || !isCapturing) {
                 return@launch
             }
 
-            pushVideoToServerAsynchronously(height, width, length, offset, frameData)
+            pushVideoToServerAsynchronously(height, width, length, offset, frameData, videoTimeStampInNanoSeconds)
         }
     }
 
@@ -124,6 +131,7 @@ class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
         length: Int,
         offset: Int,
         frameData: ByteArray,
+        videoTimeStampInNanoSeconds: Long
     ) {
         try {
             val chromaHeight = (height + 1) / 2
@@ -155,7 +163,7 @@ class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
             ) {}
 
             val videoFrame =
-                VideoFrame(yuv420Buffer, 0, System.nanoTime() - startCaptureTimeNS)
+                VideoFrame(yuv420Buffer, 0, videoTimeStampInNanoSeconds)
             capturerObserver.onFrameCaptured(videoFrame)
             videoFrame.release()
         } catch (e: Exception) {

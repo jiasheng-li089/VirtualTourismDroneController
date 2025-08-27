@@ -40,8 +40,6 @@ class VirtualController(
 
     private var expectedTakeOffHeight = 1.2f
 
-    private var locationRetriever: OnRawDataObserver? = null
-
     @Volatile
     var initialLocation: LocationCoordinate3D? = null
         private set
@@ -91,89 +89,135 @@ class VirtualController(
         droneParam.rollPitchControlMode = RollPitchControlMode.ANGLE
     }
 
-    fun prepareDrone(isFlying: Boolean? = null) {
+    private fun getDroneReady(isFlying: Boolean) {
         // TODO be careful, the logic of this method heavily depends on getting location of the drone, this should be verified if it works indoor
-        if (!isDroneReady && null == prepareJob) {
-            // for now, there is no obvious status regarding this
-            // the only way to do is to check if the drone reaches the height obtained from `KeyAircraftAttitude`
-            // however, the height recognition is not that accurate.
+        if (isDroneReady || null != prepareJob) {
+            // already got ready or in the preparing stage
+            return
+        }
 
-            val locationKey = FlightControllerKey.KeyAircraftLocation3D
-            when (isFlying) {
-                true -> {
-                    Timber.d("already flying, try to retrieve current location as the initial position")
-                    initialLocation = null
+        // for now, there is no obvious status regarding this
+        // the only way to do is to check if the drone reaches the height obtained from `KeyAircraftAttitude`
+        // however, the height recognition is not that accurate.
 
-                    // already flying, regard current location as the initial location
-                    prepareJob = scope.launch(Dispatchers.IO) {
-                        // within indoor environment, the sdk won't return the location of the drone because of no GPS signal, then how to detect the height???
-                        locationRetriever = observable.register(locationKey) { key, value ->
-                            if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
-                                locationRetriever?.let {
-                                    observable.unregister(locationKey, it)
-                                    locationRetriever = null
-                                }
-                                initialLocation = value
-                            }
-                        }
+        val locationKey = FlightControllerKey.KeyAircraftLocation3D
+        val ultrasonicHeightKey = FlightControllerKey.KeyUltrasonicHeight
 
-                        do {
-                            delay(100)
-                        } while (null == initialLocation && prepareJob?.isActive == true)
+        // 0 is the location callback, 1 is the ultrasound height callback
+        val rawDataObserver = Array<OnRawDataObserver?>(2) {
+            null
+        }
+        var initHeight = 0.0
+        var isInDoor = false
 
-                        if (true == prepareJob?.isActive) {
-                            settingHomeLocation()
-                            isDroneReady = true
-                        }
-                        prepareJob = null
-                    }
-                }
+        if (isFlying) {
+            Timber.d("already flying, try to retrieve current location as the initial position")
+            initialLocation = null
 
-                false -> {
-                    initialLocation = null
-                    Timber.d("Not flying, take off the drone first")
-                    // not flying, takeoff first
-                    prepareJob = scope.launch(Dispatchers.IO) {
-                        KeyTools.createKey(FlightControllerKey.KeyStartTakeoff).action()
-                        locationRetriever = observable.register(locationKey) { key, value ->
-                            if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
-                                Timber.d("Retrieved valid location for checking if drone is ready or not")
-                                initialLocation = value
-                            }
-                        }
-
-                        // detect the height of the drone
-                        do {
-                            delay(100)
-                        } while (prepareJob?.isActive == true && (null == initialLocation || abs(
-                                initialLocation!!.altitude - expectedTakeOffHeight
-                            ) >= abs(
-                                expectedTakeOffHeight / 10f
-                            ))
-                        )
-                        Timber.d("The drone is ready or the task becomes invalid (${true != prepareJob?.isActive})")
-                        locationRetriever?.let {
+            // already flying, regard current location as the initial location
+            prepareJob = scope.launch(Dispatchers.IO) {
+                // within indoor environment, the sdk won't return the location of the drone because of no GPS signal, then how to detect the height???
+                rawDataObserver[0] = observable.register(locationKey) { key, value ->
+                    if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
+                        rawDataObserver[0]?.let {
                             observable.unregister(locationKey, it)
-                            locationRetriever = null
+                            rawDataObserver[0] = null
                         }
-
-                        if (true == prepareJob?.isActive) {
-                            settingHomeLocation()
-                            Timber.d("The drone is ready now")
-                            isDroneReady = true
-                        }
-                        prepareJob = null
+                        initialLocation = value
+                        isInDoor = false
+                        initHeight = initialLocation!!.altitude
                     }
                 }
 
-                else -> {
-                    KeyTools.createKey(FlightControllerKey.KeyIsFlying).get({ flying ->
-                        flying?.let { prepareDrone(it) }
-                    }, {
-                        // do nothing, just ignore it
-                    })
+                do {
+                    delay(100)
+                    if (null == rawDataObserver[1]) {
+                        rawDataObserver[1] = observable.register(ultrasonicHeightKey) { key, value ->
+                            if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
+                                rawDataObserver[1]?.let {
+                                    observable.unregister(ultrasonicHeightKey, it)
+                                    rawDataObserver[1] = null
+                                }
+                                // the unit of the ultrasonic height is decimeter
+                                initHeight = value / 10.0
+                                isInDoor = true
+                            }
+                        }
+                    }
+                } while (prepareJob?.isActive == true && (!isInDoor && null == initialLocation))
+
+                if (true == prepareJob?.isActive) {
+                    if (!isInDoor && null != initialLocation)  settingHomeLocation()
+                    isDroneReady = true
                 }
+                prepareJob = null
             }
+        } else {
+            initialLocation = null
+            isInDoor = true
+            Timber.d("Not flying, take off the drone first")
+            // not flying, takeoff first
+            prepareJob = scope.launch(Dispatchers.IO) {
+                KeyTools.createKey(FlightControllerKey.KeyStartTakeoff).action()
+                rawDataObserver[0] = observable.register(locationKey) { key, value ->
+                    if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
+                        Timber.d("Retrieved valid location for checking if drone is ready or not")
+                        initialLocation = value
+                        isInDoor = false
+                        initHeight = initialLocation!!.altitude
+                    }
+                }
+                rawDataObserver[1] = observable.register(ultrasonicHeightKey) { key, value ->
+                    if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
+                        Timber.d("Retrieved valid height from the drone")
+                        if (isInDoor) {
+                            initHeight = value / 10.0
+                        } else {
+                            // within an outdoor environment, can receive the gps signal, so ignore the result of ultrasonic
+                        }
+                    }
+                }
+
+                // detect the height of the drone
+                var isAroundExpectedHeight: Boolean
+                do {
+                    delay(100)
+
+                    isAroundExpectedHeight =
+                        (abs(initHeight - expectedTakeOffHeight) <= abs(expectedTakeOffHeight / 10f))
+                } while (prepareJob?.isActive == true && !isAroundExpectedHeight)
+
+                Timber.d("The drone is ready or the task becomes invalid (${true != prepareJob?.isActive})")
+                rawDataObserver[0]?.let {
+                    observable.unregister(locationKey, it)
+                    rawDataObserver[0] = null
+                }
+                rawDataObserver[1]?.let {
+                    observable.unregister(ultrasonicHeightKey, it)
+                    rawDataObserver[1] = null
+                }
+
+                if (true == prepareJob?.isActive) {
+                    settingHomeLocation()
+                    Timber.d("The drone is ready now")
+                    isDroneReady = true
+                }
+                prepareJob = null
+            }
+        }
+    }
+
+    fun prepareDrone() {
+        if (!isDroneReady && null == prepareJob) {
+            KeyTools.createKey(FlightControllerKey.KeyIsFlying).get({ flying ->
+                flying?.let { getDroneReady(it) }
+            }, {
+                messageNotifier.invoke(
+                    Log.ERROR,
+                    "Unable to check if drone is flying(${it.errorCode()}): ${it.hint()}",
+                    null
+                )
+            })
         }
     }
 
@@ -196,10 +240,7 @@ class VirtualController(
 
 
     fun abort() {
-        if (isDroneReady) {
-            // reset the velocity around different direction
-            adjustDroneVelocity(0.0, 0.0, 0.0)
-        }
+        adjustDroneVelocity(0.0, 0.0, 0.0)
         prepareJob?.cancel()
         prepareJob = null
         isDroneReady = false

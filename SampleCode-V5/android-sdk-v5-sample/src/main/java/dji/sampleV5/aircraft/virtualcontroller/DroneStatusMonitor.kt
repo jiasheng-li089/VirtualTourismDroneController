@@ -17,6 +17,7 @@ import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
+import dji.sdk.keyvalue.value.common.Velocity3D
 import dji.sdk.keyvalue.value.flightcontroller.FlightControlAuthorityChangeReason
 import dji.sdk.keyvalue.value.flightcontroller.FlightMode
 import dji.sdk.keyvalue.value.flightcontroller.RemoteControllerFlightMode
@@ -192,6 +193,12 @@ class DroneStatusMonitor(
                     "%.2f / %.2f / %.2f".format(attitude.yaw, attitude.roll, attitude.pitch)
                 } ?: "N/A"
             }
+        droneStatusHandle[FlightControllerKey.KeyAircraftVelocity] =
+                R.string.hint_drone_velocity.idToString() to {
+                    (it as? Velocity3D)?.let { velocity3D ->
+                        "%.2f / %.2f / %.2f".format(velocity3D.x, velocity3D.y, velocity3D.z)
+                    } ?: "0 / 0 /0"
+                }
 
         // monitor motors status
         droneStatusHandle[FlightControllerKey.KeyAreMotorsOn] = R.string.hint_motors_are_on.idToString() to yesOrNoCallback
@@ -268,7 +275,7 @@ class DroneStatusMonitor(
 
     override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
         val result =
-            "${if (stickState.isVirtualStickEnable) "Y" else "N"}/${if (stickState.isVirtualStickAdvancedModeEnabled) "Y" else "N"}"
+            "${if (stickState.isVirtualStickEnable) "Y" else "N"} / ${if (stickState.isVirtualStickAdvancedModeEnabled) "Y" else "N"}"
         notifyUpdate(mapOf(R.string.hint_virtual_stick_state.idToString() to result))
     }
 
