@@ -132,6 +132,7 @@ class VirtualController(
                 do {
                     delay(100)
                     if (null == rawDataObserver[1]) {
+                        Timber.d("Register ultrasonic height listener")
                         rawDataObserver[1] = observable.register(ultrasonicHeightKey) { key, value ->
                             if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
                                 rawDataObserver[1]?.let {
@@ -147,7 +148,7 @@ class VirtualController(
                 } while (prepareJob?.isActive == true && (!isInDoor && null == initialLocation))
 
                 if (true == prepareJob?.isActive) {
-                    if (!isInDoor && null != initialLocation)  settingHomeLocation()
+                    if (null != initialLocation)  settingHomeLocation()
                     isDroneReady = true
                 }
                 prepareJob = null
@@ -167,9 +168,10 @@ class VirtualController(
                         initHeight = initialLocation!!.altitude
                     }
                 }
+                Timber.d("Register ultrasonic height listener")
                 rawDataObserver[1] = observable.register(ultrasonicHeightKey) { key, value ->
-                    if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
-                        Timber.d("Retrieved valid height from the drone")
+                    if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
+                        Timber.d("Retrieved valid height from the drone: $value")
                         if (isInDoor) {
                             initHeight = value / 10.0
                         } else {
@@ -198,7 +200,7 @@ class VirtualController(
                 }
 
                 if (true == prepareJob?.isActive) {
-                    settingHomeLocation()
+                    if (null != initialLocation) settingHomeLocation()
                     Timber.d("The drone is ready now")
                     isDroneReady = true
                 }
