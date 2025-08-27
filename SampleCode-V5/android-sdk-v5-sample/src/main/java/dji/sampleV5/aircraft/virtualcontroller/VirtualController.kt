@@ -25,6 +25,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.Timer
 import kotlin.math.abs
 
 // maximum recommended frequency is 25 Hz
@@ -65,14 +66,19 @@ class VirtualController(
             )
         })
 
-        droneParam = VirtualStickFlightControlParam()
-        droneParam.yaw = 0.0
-        droneParam.roll = 0.0
-        droneParam.pitch = 0.0
-        droneParam.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
-        droneParam.verticalControlMode = VerticalControlMode.VELOCITY
-        droneParam.yawControlMode = YawControlMode.ANGULAR_VELOCITY
-        droneParam.rollPitchControlMode = RollPitchControlMode.VELOCITY
+        droneParam = initDroneAdvancedParam()
+    }
+
+    private fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
+        val param = VirtualStickFlightControlParam()
+        param.yaw = 0.0
+        param.roll = 0.0
+        param.pitch = 0.0
+        param.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
+        param.verticalControlMode = VerticalControlMode.VELOCITY
+        param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
+        param.rollPitchControlMode = RollPitchControlMode.VELOCITY
+        return param
     }
 
     private fun getDroneReady(isFlying: Boolean) {
@@ -97,6 +103,14 @@ class VirtualController(
         var isInDoor = false
 
         if (isFlying) {
+            Timber.d("already flying, set the status to ready, ignore setting home location and enable virtual stick control")
+            isDroneReady = true
+            changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
+            prepareJob?.cancel()
+            prepareJob = null
+            return
+
+            // because of these callbacks are unreliable within indoor and outdoor environments, respectively.
             Timber.d("already flying, try to retrieve current location as the initial position")
             initialLocation = null
 
@@ -105,6 +119,7 @@ class VirtualController(
                 // within indoor environment, the sdk won't return the location of the drone because of no GPS signal, then how to detect the height???
                 rawDataObserver[0] = observable.register(locationKey) { key, value ->
                     if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
+                        Timber.d("Retrieved valid location from gps (#1)")
                         rawDataObserver[0]?.let {
                             observable.unregister(locationKey, it)
                             rawDataObserver[0] = null
@@ -119,8 +134,10 @@ class VirtualController(
                     delay(100)
                     if (null == rawDataObserver[1]) {
                         Timber.d("Register ultrasonic height listener")
+                        // that doesn't make sense at all, when the drone is hovering, ultrasonic won't return any thing
                         rawDataObserver[1] = observable.register(ultrasonicHeightKey) { key, value ->
                             if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
+                                Timber.d("Retrieved valid height from ultrasonic (#1): $value")
                                 rawDataObserver[1]?.let {
                                     observable.unregister(ultrasonicHeightKey, it)
                                     rawDataObserver[1] = null
@@ -151,6 +168,7 @@ class VirtualController(
                 KeyTools.createKey(FlightControllerKey.KeyStartTakeoff).action()
                 rawDataObserver[0] = observable.register(locationKey) { key, value ->
                     if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
+                        Timber.d("Retrieved valid location from gps (#2)")
                         Timber.d("Retrieved valid location for checking if drone is ready or not")
                         initialLocation = value
                         isInDoor = false
@@ -160,7 +178,7 @@ class VirtualController(
                 Timber.d("Register ultrasonic height listener")
                 rawDataObserver[1] = observable.register(ultrasonicHeightKey) { key, value ->
                     if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
-                        Timber.d("Retrieved valid height from the drone: $value")
+                        Timber.d("Retrieved valid height from ultrasonic (#2): $value")
                         if (isInDoor) {
                             initHeight = value / 10.0
                         } else {
@@ -234,12 +252,13 @@ class VirtualController(
 
 
     fun abort() {
-        adjustDroneVelocity(0.0, 0.0, 0.0)
+        isDroneReady = false
+
+        adjustDroneVelocityOneTime(0.0, 0.0, 0.0)
         changeVirtualStickStatus(enable = false, syncAdvancedParam = true)
 
         prepareJob?.cancel()
         prepareJob = null
-        isDroneReady = false
     }
 
     fun destroy() {
@@ -263,9 +282,9 @@ class VirtualController(
                     "${if (roll >= 0) "Right" else "Left"}: ${abs(roll)}\tRotation: $yaw"
         messageNotifier.invoke(Log.INFO, log, null)
 
-        if (null == sendingCmdJob) {
+        if (null == sendingCmdJob || !sendingCmdJob!!.isActive) {
             sendingCmdJob = scope.launch(Dispatchers.IO) {
-                while (sendingCmdJob?.isActive == true) {
+                while (sendingCmdJob?.isActive == true && isDroneReady) {
                     // don't output the log to screen, there is too much log
                     Timber.d("Sending advanced stick param to the drone: ${droneParam.toJson()}")
                     VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(droneParam)
@@ -273,6 +292,16 @@ class VirtualController(
                 }
             }
         }
+    }
+
+    private fun adjustDroneVelocityOneTime(roll: Double, pitch: Double, yaw: Double) {
+        val param = initDroneAdvancedParam()
+        param.yaw = yaw
+        param.roll = roll
+        param.pitch = pitch
+
+        Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
+        VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
     }
 
     private fun setObstacleAvoidanceWarningDistance(distance: Double) {

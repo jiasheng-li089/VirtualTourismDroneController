@@ -121,7 +121,7 @@ class DroneStatusMonitor(
                 val set = HashSet<OnRawDataObserver>()
                 rawDataObserver[key.innerIdentifier] = set
                 set
-            }).add(observer)
+            }).remove(observer)
         } else {
             scope.launch(Dispatchers.Main) {
                 unregister(key, observer)
