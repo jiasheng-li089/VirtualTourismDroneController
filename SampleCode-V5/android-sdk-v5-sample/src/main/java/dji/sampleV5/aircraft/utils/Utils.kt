@@ -1,6 +1,7 @@
 package dji.sampleV5.aircraft.utils
 
 import com.google.gson.GsonBuilder
+import java.lang.reflect.Type
 
 
 fun Float.format(): String {
@@ -17,6 +18,14 @@ fun Int.format(numberOfZero: Int = 2): String {
 
 fun Any.toJson(): String {
     return Inner.gson.toJson(this)
+}
+
+fun <T> String.toData(clazz: Class<T>): T {
+    return Inner.gson.fromJson<T>(this, clazz)
+}
+
+fun <T> String.toData(type: Type): T {
+    return Inner.gson.fromJson(this, type)
 }
 
 private object Inner{

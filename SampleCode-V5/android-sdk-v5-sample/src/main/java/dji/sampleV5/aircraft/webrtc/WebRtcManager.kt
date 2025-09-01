@@ -389,6 +389,7 @@ abstract class BaseWebRtcConnection (
             }
 
             override fun onMessage(p0: DataChannel.Buffer?) {
+                // TODO in which thread will this method be called???
                 p0?.let {
                     val byteArray = ByteArray(it.data.remaining())
                     it.data.get(byteArray)

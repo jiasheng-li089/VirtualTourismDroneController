@@ -97,6 +97,8 @@ class DJIVideoCapturer(private val scope: CoroutineScope) : VideoCapturer {
     }
 
     override fun dispose() {
+        if (isCapturing) stopCapture()
+
         isDisposed = true
     }
 

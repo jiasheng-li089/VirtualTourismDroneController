@@ -14,6 +14,7 @@ import dji.sampleV5.aircraft.BuildConfig
 import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.utils.format
+import dji.sampleV5.aircraft.utils.toData
 import dji.sampleV5.aircraft.virtualcontroller.DroneStatusMonitor
 import dji.sampleV5.aircraft.virtualcontroller.VirtualController
 import dji.sampleV5.aircraft.webrtc.ConnectionInfo
@@ -55,7 +56,7 @@ import timber.log.Timber
 
 private const val TAG = "CameraStreamVM"
 
-const val USE_DRONE_CAMERA = true
+const val USE_DRONE_CAMERA = false
 
 private const val PING_INTERVAL = 1000L
 
@@ -77,6 +78,10 @@ data class RootMessage(
     val channel: String,
     val type: String,
     val from: String,
+)
+
+data class ControlStatusData (
+    val benchMark: String,
 )
 
 class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListener {
@@ -312,6 +317,14 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                         emitMonitorStatus(mapOf(result))
                         Timber.i("${result.first} --> ${result.second}}")
                     }
+                }
+            } else if ("ControlStatus".equals(rootMessage?.type, true)) {
+                // TODO Received status update from headset/controller, how to handle this data
+                //  Be careful, this method is called in the UI thread
+                val statusData = rootMessage.data.toData(ControlStatusData::class.java)
+                // redirect to UI thread to handle the data
+                viewModelScope.launch(Dispatchers.Main) {
+                    droneController?.onControlStatusData(statusData)
                 }
             }
         }

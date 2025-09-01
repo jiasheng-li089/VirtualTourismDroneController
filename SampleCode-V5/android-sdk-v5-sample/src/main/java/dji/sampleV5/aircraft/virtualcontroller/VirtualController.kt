@@ -1,6 +1,7 @@
 package dji.sampleV5.aircraft.virtualcontroller
 
 import android.util.Log
+import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
@@ -25,11 +26,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.util.Timer
 import kotlin.math.abs
 
 // maximum recommended frequency is 25 Hz
 private const val SENDING_FREQUENCY = 5
+
+interface IControlStrategy {
+
+}
 
 class VirtualController(
     private val scope: CoroutineScope,
@@ -217,6 +221,10 @@ class VirtualController(
                 prepareJob = null
             }
         }
+    }
+
+    fun onControlStatusData(data: ControlStatusData) {
+
     }
 
     fun prepareDrone() {
