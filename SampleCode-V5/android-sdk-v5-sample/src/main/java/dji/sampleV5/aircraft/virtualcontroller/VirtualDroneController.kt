@@ -2,6 +2,7 @@ package dji.sampleV5.aircraft.virtualcontroller
 
 import android.util.Log
 import dji.sampleV5.aircraft.models.ControlStatusData
+import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
@@ -31,26 +32,111 @@ import kotlin.math.abs
 // maximum recommended frequency is 25 Hz
 private const val SENDING_FREQUENCY = 5
 
-interface IControlStrategy {
+
+typealias ControlStatusFeedback = (String, String) -> Unit
+typealias MessageNotifier = (Int, String, Throwable?) -> Unit
+
+interface IDroneController {
+
+    fun getInitialLocation(): LocationCoordinate3D?
+
+    fun prepareDrone()
+
+    fun abort()
+
+    fun changeDroneVelocity(
+        forwardBackward: Double = 0.0,
+        rightLeft: Double = 0.0,
+        rotateRightLeft: Double = 0.0,
+        period: Long = 1000,
+    )
+
+    fun onControllerStatusData(data: ControlStatusData)
+
+    fun destroy()
+
+    fun isDroneReady(): Boolean
 
 }
 
-class VirtualController(
-    private val scope: CoroutineScope,
-    private val observable: RawDataObservable,
-    private val messageNotifier: (Int, String, Throwable?) -> Unit,
-) {
+abstract class BaseDroneController(
+    protected val scope: CoroutineScope,
+    protected val observable: RawDataObservable,
+    protected val controlStatusFeedback: ControlStatusFeedback?,
+    protected val messageNotifier: MessageNotifier?,
+) : IDroneController {
 
-    var isDroneReady: Boolean = false
-        private set
+    private var isReady: Boolean = false
+
+    override fun isDroneReady(): Boolean {
+        return isReady
+    }
+
+    protected open fun switchDroneStatus(isReady: Boolean) {
+        if (isReady) {
+            this@BaseDroneController.isReady = true
+
+            controlStatusFeedback?.invoke("Control", "Start")
+        } else {
+            controlStatusFeedback?.invoke("Control", "Stop")
+
+            this@BaseDroneController.isReady = false
+        }
+    }
+}
+
+class MockDroneController(
+    scope: CoroutineScope,
+    observable: RawDataObservable,
+    controlStatusFeedback: ControlStatusFeedback?,
+    messageNotifier: MessageNotifier?,
+) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier) {
+
+    override fun getInitialLocation(): LocationCoordinate3D? {
+        return null
+    }
+
+    override fun prepareDrone() {
+        Timber.d("Mock to start the control")
+        switchDroneStatus(true)
+    }
+
+    override fun abort() {
+        Timber.d("Mock to abort the control")
+        switchDroneStatus(false)
+    }
+
+    override fun changeDroneVelocity(
+        forwardBackward: Double,
+        rightLeft: Double,
+        rotateRightLeft: Double,
+        period: Long,
+    ) {
+        Timber.d("Mock to change drone velocity: $forwardBackward / $rightLeft / $rotateRightLeft / $period")
+    }
+
+    override fun onControllerStatusData(data: ControlStatusData) {
+        Timber.d("Received status changes from remote controller: ${data.toJson()}")
+    }
+
+    override fun destroy() {
+    }
+
+}
+
+class VirtualDroneController(
+    scope: CoroutineScope,
+    observable: RawDataObservable,
+    controlStatusFeedback: ControlStatusFeedback?,
+    messageNotifier: MessageNotifier?,
+) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier) {
 
     private var prepareJob: Job? = null
 
     private var expectedTakeOffHeight = 1.2f
 
     @Volatile
-    var initialLocation: LocationCoordinate3D? = null
-        private set
+    private var initialLocation: LocationCoordinate3D? = null
 
     private var droneParam: VirtualStickFlightControlParam
 
@@ -61,9 +147,9 @@ class VirtualController(
         setObstacleAvoidance(false, null)
 
         KeyTools.createKey(FlightControllerKey.KeyHeightLimit).set(2, {
-            messageNotifier.invoke(Log.DEBUG, "Set the maximum height of drone successfully", null)
+            messageNotifier?.invoke(Log.DEBUG, "Set the maximum height of drone successfully", null)
         }, {
-            messageNotifier.invoke(
+            messageNotifier?.invoke(
                 Log.ERROR,
                 "Failed to set maximum height of drone (${it.errorCode()}): ${it.hint()}",
                 null
@@ -85,9 +171,21 @@ class VirtualController(
         return param
     }
 
+    override fun switchDroneStatus(isReady: Boolean) {
+        super.switchDroneStatus(isReady)
+        if (isReady) {
+            changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
+            prepareJob?.cancel()
+            prepareJob = null
+        } else {
+            adjustDroneVelocityOneTime(0.0, 0.0, 0.0)
+            changeVirtualStickStatus(enable = false, syncAdvancedParam = true)
+        }
+    }
+
     private fun getDroneReady(isFlying: Boolean) {
         // TODO be careful, the logic of this method heavily depends on getting location of the drone, this should be verified if it works indoor
-        if (isDroneReady || null != prepareJob) {
+        if (isDroneReady() || null != prepareJob) {
             // already got ready or in the preparing stage
             return
         }
@@ -108,10 +206,7 @@ class VirtualController(
 
         if (isFlying) {
             Timber.d("already flying, set the status to ready, ignore setting home location and enable virtual stick control")
-            isDroneReady = true
-            changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
-            prepareJob?.cancel()
-            prepareJob = null
+            switchDroneStatus(true)
             return
 
             // because of these callbacks are unreliable within indoor and outdoor environments, respectively.
@@ -139,27 +234,25 @@ class VirtualController(
                     if (null == rawDataObserver[1]) {
                         Timber.d("Register ultrasonic height listener")
                         // that doesn't make sense at all, when the drone is hovering, ultrasonic won't return any thing
-                        rawDataObserver[1] = observable.register(ultrasonicHeightKey) { key, value ->
-                            if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
-                                Timber.d("Retrieved valid height from ultrasonic (#1): $value")
-                                rawDataObserver[1]?.let {
-                                    observable.unregister(ultrasonicHeightKey, it)
-                                    rawDataObserver[1] = null
+                        rawDataObserver[1] =
+                            observable.register(ultrasonicHeightKey) { key, value ->
+                                if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
+                                    Timber.d("Retrieved valid height from ultrasonic (#1): $value")
+                                    rawDataObserver[1]?.let {
+                                        observable.unregister(ultrasonicHeightKey, it)
+                                        rawDataObserver[1] = null
+                                    }
+                                    // the unit of the ultrasonic height is decimeter
+                                    initHeight = value / 10.0
+                                    isInDoor = true
                                 }
-                                // the unit of the ultrasonic height is decimeter
-                                initHeight = value / 10.0
-                                isInDoor = true
                             }
-                        }
                     }
                 } while (prepareJob?.isActive == true && (!isInDoor && null == initialLocation))
 
                 if (true == prepareJob?.isActive) {
-                    if (null != initialLocation)  settingHomeLocation()
-                    isDroneReady = true
-
-                    // only enable advanced param when the drone is ready
-                    changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
+                    if (null != initialLocation) settingHomeLocation()
+                    switchDroneStatus(true)
                 }
                 prepareJob = null
             }
@@ -213,26 +306,27 @@ class VirtualController(
                 if (true == prepareJob?.isActive) {
                     if (null != initialLocation) settingHomeLocation()
                     Timber.d("The drone is ready now")
-                    isDroneReady = true
-
-                    // only enable advanced param when the drone is ready
-                    changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
+                    switchDroneStatus(true)
                 }
                 prepareJob = null
             }
         }
     }
 
-    fun onControlStatusData(data: ControlStatusData) {
+    override fun onControllerStatusData(data: ControlStatusData) {
 
     }
 
-    fun prepareDrone() {
-        if (!isDroneReady && null == prepareJob) {
+    override fun getInitialLocation(): LocationCoordinate3D? {
+        return this.initialLocation
+    }
+
+    override fun prepareDrone() {
+        if (!this.isDroneReady() && null == prepareJob) {
             KeyTools.createKey(FlightControllerKey.KeyIsFlying).get({ flying ->
                 flying?.let { getDroneReady(it) }
             }, {
-                messageNotifier.invoke(
+                messageNotifier?.invoke(
                     Log.ERROR,
                     "Unable to check if drone is flying(${it.errorCode()}): ${it.hint()}",
                     null
@@ -241,11 +335,11 @@ class VirtualController(
         }
     }
 
-    fun changeDroneVelocity(
-        forwardBackward: Double = 0.0,
-        rightLeft: Double = 0.0,
-        rotateRightLeft: Double = 0.0,
-        period: Long = 1000,
+    override fun changeDroneVelocity(
+        forwardBackward: Double,
+        rightLeft: Double,
+        rotateRightLeft: Double,
+        period: Long,
     ) {
         adjustDroneVelocity(forwardBackward, rightLeft, rotateRightLeft)
 
@@ -259,17 +353,14 @@ class VirtualController(
     }
 
 
-    fun abort() {
-        isDroneReady = false
-
-        adjustDroneVelocityOneTime(0.0, 0.0, 0.0)
-        changeVirtualStickStatus(enable = false, syncAdvancedParam = true)
+    override fun abort() {
+        switchDroneStatus(false)
 
         prepareJob?.cancel()
         prepareJob = null
     }
 
-    fun destroy() {
+    override fun destroy() {
         setObstacleAvoidance(true, null)
         setObstacleAvoidanceWarningDistance(4.0)
 
@@ -288,11 +379,11 @@ class VirtualController(
         val log =
             "Change drone's velocity: ${if (pitch > 0) "Backward" else "Forward"}: ${abs(pitch)}\t" +
                     "${if (roll >= 0) "Right" else "Left"}: ${abs(roll)}\tRotation: $yaw"
-        messageNotifier.invoke(Log.INFO, log, null)
+        messageNotifier?.invoke(Log.INFO, log, null)
 
         if (null == sendingCmdJob || !sendingCmdJob!!.isActive) {
             sendingCmdJob = scope.launch(Dispatchers.IO) {
-                while (sendingCmdJob?.isActive == true && isDroneReady) {
+                while (sendingCmdJob?.isActive == true && isDroneReady()) {
                     // don't output the log to screen, there is too much log
                     Timber.d("Sending advanced stick param to the drone: ${droneParam.toJson()}")
                     VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(droneParam)
@@ -323,7 +414,7 @@ class VirtualController(
                 direction,
                 object : CommonCallbacks.CompletionCallback {
                     override fun onSuccess() {
-                        messageNotifier.invoke(
+                        messageNotifier?.invoke(
                             Log.DEBUG,
                             "Set obstacle avoidance warning distance successfully for direction: ${direction.name}",
                             null
@@ -331,7 +422,7 @@ class VirtualController(
                     }
 
                     override fun onFailure(p0: IDJIError) {
-                        messageNotifier.invoke(
+                        messageNotifier?.invoke(
                             Log.ERROR,
                             "Set obstacle avoidance warning distance successfully for direction: ${direction.name}",
                             null
@@ -348,7 +439,7 @@ class VirtualController(
             if (enable) ObstacleAvoidanceType.BYPASS else ObstacleAvoidanceType.CLOSE,
             object : CommonCallbacks.CompletionCallback {
                 override fun onSuccess() {
-                    messageNotifier.invoke(
+                    messageNotifier?.invoke(
                         Log.DEBUG,
                         "${if (enable) "Enable" else "Disable"} obstacle avoidance successfully",
                         null
@@ -357,7 +448,7 @@ class VirtualController(
                 }
 
                 override fun onFailure(p0: IDJIError) {
-                    messageNotifier.invoke(
+                    messageNotifier?.invoke(
                         Log.ERROR,
                         "${if (enable) "Enable" else "Disable"} obstacle avoidance failed (${p0.errorCode()}): ${p0.hint()}",
                         null
@@ -371,33 +462,47 @@ class VirtualController(
             VirtualStickManager.getInstance()
                 .enableVirtualStick(object : CommonCallbacks.CompletionCallback {
                     override fun onSuccess() {
-                        messageNotifier.invoke(Log.DEBUG, "Enable virtual stick successfully", null)
+                        messageNotifier?.invoke(
+                            Log.DEBUG,
+                            "Enable virtual stick successfully",
+                            null
+                        )
 
-                        if (syncAdvancedParam) VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(true)
+                        if (syncAdvancedParam) VirtualStickManager.getInstance()
+                            .setVirtualStickAdvancedModeEnabled(true)
                     }
 
                     override fun onFailure(p0: IDJIError) {
-                        messageNotifier.invoke(
+                        messageNotifier?.invoke(
                             Log.ERROR,
                             "Failed to enable the virtual stick(${p0.errorCode()}): ${p0.hint()}",
                             null
                         )
                     }
-
                 })
         } else {
-            if (syncAdvancedParam) VirtualStickManager.getInstance().setVirtualStickAdvancedModeEnabled(false)
+            if (syncAdvancedParam) VirtualStickManager.getInstance()
+                .setVirtualStickAdvancedModeEnabled(false)
 
-            VirtualStickManager.getInstance().disableVirtualStick(object : CommonCallbacks.CompletionCallback {
-                override fun onSuccess() {
-                    messageNotifier.invoke(Log.DEBUG, "Disable virtual stick successfully", null)
-                }
+            VirtualStickManager.getInstance()
+                .disableVirtualStick(object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() {
+                        messageNotifier?.invoke(
+                            Log.DEBUG,
+                            "Disable virtual stick successfully",
+                            null
+                        )
+                    }
 
-                override fun onFailure(p0: IDJIError) {
-                    messageNotifier.invoke(Log.ERROR, "Failed to disable the virtual stick(${p0.errorCode()}): ${p0.hint()}", null)
-                }
+                    override fun onFailure(p0: IDJIError) {
+                        messageNotifier?.invoke(
+                            Log.ERROR,
+                            "Failed to disable the virtual stick(${p0.errorCode()}): ${p0.hint()}",
+                            null
+                        )
+                    }
 
-            })
+                })
         }
     }
 

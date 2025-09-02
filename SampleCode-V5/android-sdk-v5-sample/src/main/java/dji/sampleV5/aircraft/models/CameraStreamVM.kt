@@ -16,7 +16,9 @@ import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.utils.format
 import dji.sampleV5.aircraft.utils.toData
 import dji.sampleV5.aircraft.virtualcontroller.DroneStatusMonitor
-import dji.sampleV5.aircraft.virtualcontroller.VirtualController
+import dji.sampleV5.aircraft.virtualcontroller.IDroneController
+import dji.sampleV5.aircraft.virtualcontroller.MockDroneController
+import dji.sampleV5.aircraft.virtualcontroller.VirtualDroneController
 import dji.sampleV5.aircraft.webrtc.ConnectionInfo
 import dji.sampleV5.aircraft.webrtc.DATA_RECEIVER
 import dji.sampleV5.aircraft.webrtc.DJIVideoCapturer
@@ -38,10 +40,12 @@ import dji.v5.manager.aircraft.simulator.SimulatorStatusListener
 import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.functions.Consumer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.internal.closeQuietly
 import org.webrtc.AudioSource
 import org.webrtc.Camera2Enumerator
 import org.webrtc.CameraVideoCapturer
@@ -52,11 +56,14 @@ import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import timber.log.Timber
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 
 private const val TAG = "CameraStreamVM"
 
 const val USE_DRONE_CAMERA = false
+const val USE_MOCK_CONTROL = true
 
 private const val PING_INTERVAL = 1000L
 
@@ -80,8 +87,25 @@ data class RootMessage(
     val from: String,
 )
 
-data class ControlStatusData (
-    val benchMark: String,
+data class Vector2D(
+    var x: Float,
+    var y: Float
+)
+
+data class Vector3D(var x: Float, var y: Float, var z: Float)
+
+data class ControlStatusData(
+    var benchmarkPosition: Vector3D,
+    var benchmarkRotation: Vector3D,
+    var lastPosition: Vector3D,
+    var lastRotation: Vector3D,
+    var currentPosition: Vector3D,
+    var currentRotation: Vector3D,
+
+    var leftThumbStickValue: Vector2D,
+    var rightThumbStickValue: Vector2D,
+
+    var lastSampleTime: Long
 )
 
 class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListener {
@@ -118,7 +142,9 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
     private var statusMonitor: DroneStatusMonitor? = null
 
-    private var droneController: VirtualController? = null
+    private var droneController: IDroneController? = null
+
+    private val controllerStatusHandleScheduler = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
     fun initialize(application: Application) {
         this.application = application
@@ -136,10 +162,10 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             emitMonitorStatus(it)
 
             droneController?.let { controller ->
-                Timber.d("If the drone is ready: ${controller.isDroneReady}")
+                Timber.d("If the drone is ready: ${controller.isDroneReady()}")
                 emitMonitorStatus(
                     mapOf(
-                        R.string.hint_remote_control.idToString() to if (controller.isDroneReady) {
+                        R.string.hint_remote_control.idToString() to if (controller.isDroneReady()) {
                             "Ready"
                         } else {
                             "Not Ready"
@@ -147,8 +173,8 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                     )
                 )
 
-                val loc = controller.initialLocation
-                if (controller.isDroneReady && null != loc) {
+                val loc = controller.getInitialLocation()
+                if (controller.isDroneReady() && null != loc) {
                     if (statusMonitor?.droneInitialLocation != loc) {
                         statusMonitor?.droneInitialLocation = loc
                     }
@@ -163,8 +189,20 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             }
         }
         statusMonitor?.startMonitoring()
-        droneController =
-            VirtualController(viewModelScope, statusMonitor!!, this::showMessageOnLogAndScreen)
+        droneController = if (USE_MOCK_CONTROL)
+            MockDroneController(
+                viewModelScope,
+                statusMonitor!!,
+                this::controlStatusFeedback,
+                this::showMessageOnLogAndScreen
+            )
+        else
+            VirtualDroneController(
+                viewModelScope,
+                statusMonitor!!,
+                this::controlStatusFeedback,
+                this::showMessageOnLogAndScreen
+            )
 
         if (BuildConfig.DEBUG) {
             SimulatorManager.getInstance().addSimulatorStateListener(this)
@@ -239,7 +277,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
     fun flightToDirection(direction: Int) {
         // comment this check for debugging
-        if (droneController?.isDroneReady != true) {
+        if (droneController?.isDroneReady() != true) {
             return
         }
         val velocity = 0.25
@@ -288,6 +326,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
     override fun onCleared() {
         super.onCleared()
+        controllerStatusHandleScheduler.closeQuietly()
         eventDisposable.dispose()
 
         webRtcManager.stop()
@@ -323,8 +362,8 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                 //  Be careful, this method is called in the UI thread
                 val statusData = rootMessage.data.toData(ControlStatusData::class.java)
                 // redirect to UI thread to handle the data
-                viewModelScope.launch(Dispatchers.Main) {
-                    droneController?.onControlStatusData(statusData)
+                viewModelScope.launch(controllerStatusHandleScheduler) {
+                    droneController?.onControllerStatusData(statusData)
                 }
             }
         }
@@ -521,6 +560,10 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             }
         }
         return reqPermissions
+    }
+
+    private fun controlStatusFeedback(status: String, data: String) {
+        webRtcManager.sendData(data, status)
     }
 
     private fun showMessageOnLogAndScreen(level: Int, msg: String, exception: Throwable? = null) {
