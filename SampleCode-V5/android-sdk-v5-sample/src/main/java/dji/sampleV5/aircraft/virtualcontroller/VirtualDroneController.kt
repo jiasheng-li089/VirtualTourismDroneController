@@ -1,6 +1,7 @@
 package dji.sampleV5.aircraft.virtualcontroller
 
 import android.util.Log
+import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
@@ -29,9 +30,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import kotlin.math.abs
-
-// maximum recommended frequency is 25 Hz
-private const val SENDING_FREQUENCY = 5
 
 
 typealias ControlStatusFeedback = (String, String) -> Unit

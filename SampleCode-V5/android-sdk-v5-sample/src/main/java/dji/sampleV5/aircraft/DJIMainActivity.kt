@@ -16,7 +16,6 @@ import dji.sampleV5.aircraft.databinding.ActivityMainBinding
 import dji.sampleV5.aircraft.models.BaseMainActivityVm
 import dji.sampleV5.aircraft.models.MSDKInfoVm
 import dji.sampleV5.aircraft.models.MSDKManagerVM
-import dji.sampleV5.aircraft.models.USE_DRONE_CAMERA
 import dji.sampleV5.aircraft.models.globalViewModels
 import dji.sampleV5.aircraft.util.Helper
 import dji.sampleV5.aircraft.util.ToastUtils

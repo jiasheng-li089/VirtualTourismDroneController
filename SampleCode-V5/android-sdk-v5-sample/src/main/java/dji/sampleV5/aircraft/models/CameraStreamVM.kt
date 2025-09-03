@@ -12,7 +12,10 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import dji.sampleV5.aircraft.BuildConfig
 import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
+import dji.sampleV5.aircraft.PING_INTERVAL
 import dji.sampleV5.aircraft.R
+import dji.sampleV5.aircraft.USE_DRONE_CAMERA
+import dji.sampleV5.aircraft.USE_MOCK_CONTROL
 import dji.sampleV5.aircraft.utils.format
 import dji.sampleV5.aircraft.utils.toData
 import dji.sampleV5.aircraft.virtualcontroller.DroneStatusMonitor
@@ -61,10 +64,7 @@ import java.util.concurrent.Executors
 
 private const val TAG = "CameraStreamVM"
 
-const val USE_DRONE_CAMERA = true
-const val USE_MOCK_CONTROL = false
 
-private const val PING_INTERVAL = 1000L
 
 private val permissions = listOf(
     Manifest.permission.CAMERA,
