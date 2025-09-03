@@ -85,6 +85,14 @@
             android:text="Abort Remote control" />
     </LinearLayout>
 
+    <androidx.appcompat.widget.AppCompatSpinner
+        android:id="@+id/spinner_control_mode"
+        android:layout_width="wrap_content"
+        tools:listitem="@layout/item_monitoring_status"
+        android:layout_gravity="top|center"
+        android:popupBackground="@color/black"
+        android:layout_height="wrap_content"/>
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

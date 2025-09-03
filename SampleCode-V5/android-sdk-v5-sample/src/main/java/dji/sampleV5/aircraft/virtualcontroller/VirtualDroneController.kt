@@ -20,6 +20,7 @@ import dji.v5.et.set
 import dji.v5.manager.aircraft.perception.PerceptionManager
 import dji.v5.manager.aircraft.perception.data.ObstacleAvoidanceType
 import dji.v5.manager.aircraft.perception.data.PerceptionDirection
+import dji.v5.manager.aircraft.virtualstick.Stick
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,11 +37,64 @@ private const val SENDING_FREQUENCY = 5
 typealias ControlStatusFeedback = (String, String) -> Unit
 typealias MessageNotifier = (Int, String, Throwable?) -> Unit
 
+
+interface IControlStrategy {
+
+    fun isVirtualStickNeeded(): Boolean
+
+    fun isVirtualStickAdvancedParamNeeded(): Boolean
+
+    fun onControllerStatusData(data: ControlStatusData)
+
+}
+
+class ControlViaThumbSticks() : IControlStrategy {
+    override fun isVirtualStickNeeded() = true
+
+    override fun isVirtualStickAdvancedParamNeeded() = false
+
+    override fun onControllerStatusData(data: ControlStatusData) {
+        VirtualStickManager.getInstance().leftStick.let {
+            it.horizontalPosition = mappingValues(data.leftThumbStickValue.x).toInt() / 10
+            it.verticalPosition = mappingValues(data.leftThumbStickValue.y).toInt() / 10
+        }
+        VirtualStickManager.getInstance().rightStick?.let {
+            it.horizontalPosition = mappingValues(data.rightThumbStickValue.x).toInt() / 10
+            it.verticalPosition = mappingValues(data.rightThumbStickValue.y).toInt() / 10
+        }
+    }
+
+    fun mappingValues(input: Float): Float {
+        var tmp: Float = (if (abs(input) >= 0.1f) (abs(input) - 0.1f) / 0.9 else 0f) as Float
+        tmp = if (input > 0) tmp * tmp else - tmp*tmp
+
+        return tmp * Stick.MAX_STICK_POSITION_ABS
+    }
+
+}
+
+class ControlViaHeadset() : IControlStrategy {
+    override fun isVirtualStickNeeded(): Boolean = true
+
+    override fun isVirtualStickAdvancedParamNeeded(): Boolean = true
+
+    override fun onControllerStatusData(data: ControlStatusData) {
+    }
+
+}
+
+fun createControlStrategy(controlMode: Int): IControlStrategy {
+    return when (controlMode) {
+        0 -> ControlViaThumbSticks() // thumbsticks
+        else -> ControlViaHeadset() // headset
+    }
+}
+
 interface IDroneController {
 
     fun getInitialLocation(): LocationCoordinate3D?
 
-    fun prepareDrone()
+    fun prepareDrone(controlMode: Int)
 
     fun abort()
 
@@ -96,7 +150,7 @@ class MockDroneController(
         return null
     }
 
-    override fun prepareDrone() {
+    override fun prepareDrone(controlMode: Int) {
         Timber.d("Mock to start the control")
         switchDroneStatus(true)
     }
@@ -142,6 +196,8 @@ class VirtualDroneController(
 
     private var sendingCmdJob: Job? = null
 
+    private var controlStrategy: IControlStrategy? = null
+
     init {
         setObstacleAvoidanceWarningDistance(0.1)
         setObstacleAvoidance(false, null)
@@ -172,14 +228,25 @@ class VirtualDroneController(
     }
 
     override fun switchDroneStatus(isReady: Boolean) {
-        super.switchDroneStatus(isReady)
         if (isReady) {
-            changeVirtualStickStatus(enable = true, syncAdvancedParam = true)
-            prepareJob?.cancel()
-            prepareJob = null
+            if (true == controlStrategy?.isVirtualStickNeeded()) {
+                changeVirtualStickStatus(enable = true,
+                    syncAdvancedParam = true == controlStrategy?.isVirtualStickAdvancedParamNeeded()) {
+                    if (it) {
+                        prepareJob?.cancel()
+                        prepareJob = null
+                        super.switchDroneStatus(isReady)
+                    }
+                }
+            } else {
+                prepareJob?.cancel()
+                prepareJob = null
+                super.switchDroneStatus(true)
+            }
         } else {
+            super.switchDroneStatus(false)
             adjustDroneVelocityOneTime(0.0, 0.0, 0.0)
-            changeVirtualStickStatus(enable = false, syncAdvancedParam = true)
+            changeVirtualStickStatus(enable = false, syncAdvancedParam = true, null)
         }
     }
 
@@ -314,14 +381,18 @@ class VirtualDroneController(
     }
 
     override fun onControllerStatusData(data: ControlStatusData) {
-
+        if (isDroneReady()) {
+            controlStrategy?.onControllerStatusData(data)
+        }
     }
 
     override fun getInitialLocation(): LocationCoordinate3D? {
         return this.initialLocation
     }
 
-    override fun prepareDrone() {
+    override fun prepareDrone(controlMode: Int) {
+        controlStrategy = createControlStrategy(controlMode)
+
         if (!this.isDroneReady() && null == prepareJob) {
             KeyTools.createKey(FlightControllerKey.KeyIsFlying).get({ flying ->
                 flying?.let { getDroneReady(it) }
@@ -364,7 +435,7 @@ class VirtualDroneController(
         setObstacleAvoidance(true, null)
         setObstacleAvoidanceWarningDistance(4.0)
 
-        changeVirtualStickStatus(enable = false, syncAdvancedParam = true)
+        changeVirtualStickStatus(enable = false, syncAdvancedParam = true, null)
     }
 
     /**
@@ -457,7 +528,7 @@ class VirtualDroneController(
             })
     }
 
-    private fun changeVirtualStickStatus(enable: Boolean, syncAdvancedParam: Boolean) {
+    private fun changeVirtualStickStatus(enable: Boolean, syncAdvancedParam: Boolean, action: ((Boolean) -> Unit)?) {
         if (enable) {
             VirtualStickManager.getInstance()
                 .enableVirtualStick(object : CommonCallbacks.CompletionCallback {
@@ -470,6 +541,8 @@ class VirtualDroneController(
 
                         if (syncAdvancedParam) VirtualStickManager.getInstance()
                             .setVirtualStickAdvancedModeEnabled(true)
+
+                        action?.invoke(true)
                     }
 
                     override fun onFailure(p0: IDJIError) {
@@ -478,6 +551,7 @@ class VirtualDroneController(
                             "Failed to enable the virtual stick(${p0.errorCode()}): ${p0.hint()}",
                             null
                         )
+                        action?.invoke(false)
                     }
                 })
         } else {
@@ -492,6 +566,7 @@ class VirtualDroneController(
                             "Disable virtual stick successfully",
                             null
                         )
+                        action?.invoke(true)
                     }
 
                     override fun onFailure(p0: IDJIError) {
@@ -500,6 +575,7 @@ class VirtualDroneController(
                             "Failed to disable the virtual stick(${p0.errorCode()}): ${p0.hint()}",
                             null
                         )
+                        action?.invoke(false)
                     }
 
                 })

@@ -56,14 +56,13 @@ import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import timber.log.Timber
-import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 
 private const val TAG = "CameraStreamVM"
 
-const val USE_DRONE_CAMERA = false
-const val USE_MOCK_CONTROL = true
+const val USE_DRONE_CAMERA = true
+const val USE_MOCK_CONTROL = false
 
 private const val PING_INTERVAL = 1000L
 
@@ -124,6 +123,9 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
     val stopBtnStatus = MutableLiveData<Boolean>()
     val abortBtnStatus = MutableLiveData<Boolean>()
 
+    val remoteControlMode = MutableLiveData<Int>()
+    val remoteControlUIStatus = MutableLiveData<Boolean>()
+
     val monitoringStatus =
         MutableSharedFlow<Map<String, String>>(extraBufferCapacity = Int.MAX_VALUE)
 
@@ -155,6 +157,8 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         stopBtnStatus.value = false
         publishBtnStatus.value = true
         abortBtnStatus.value = true
+        remoteControlMode.value = 0
+        remoteControlUIStatus.value = true
 
         initializeEventHandles()
 
@@ -268,11 +272,13 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
         // direct the drone to fly to an initial position
         Timber.d("User click 'prepare for remote control'")
-        droneController?.prepareDrone()
+        droneController?.prepareDrone(remoteControlMode.value!!)
+        remoteControlUIStatus.postValue(false)
     }
 
     fun abortDroneControl() {
         droneController?.abort()
+        remoteControlUIStatus.postValue(true)
     }
 
     fun flightToDirection(direction: Int) {

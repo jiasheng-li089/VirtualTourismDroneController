@@ -13,11 +13,14 @@ import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.MarginLayoutParams
+import android.widget.AdapterView
+import android.widget.BaseAdapter
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -258,6 +261,53 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
         })
         binding.rvStatus.adapter = StatusAdapter(this)
+
+        binding.spinnerControlMode.adapter = object: BaseAdapter() {
+            override fun getCount() = 2
+
+            override fun getItem(position: Int): Any? {
+                return when(position) {
+                    0 -> "Thumbsticks"
+                    else -> "Headset"
+                }
+            }
+
+            override fun getItemId(position: Int): Long = position.toLong()
+
+            override fun getView(
+                position: Int,
+                convertView: View?,
+                parent: ViewGroup?
+            ): View? {
+                val view = convertView ?: LayoutInflater.from(this@CameraStreamActivity).inflate(R.layout.item_monitoring_status, parent, false)
+
+                (view as? TextView)?.let {
+                    it.text = getItem(position).toString()
+                    it.setBackgroundColor(Color.TRANSPARENT)
+                    it.setPadding( resources.getDimensionPixelSize(R.dimen.uxsdk_10_dp))
+                }
+
+                return view
+            }
+
+        }
+        binding.spinnerControlMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                viewModel.remoteControlMode.postValue(position)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+            }
+
+        }
+        viewModel.remoteControlUIStatus.observe(this) {
+            binding.spinnerControlMode.isEnabled = it
+        }
 
         viewModel.initialize(this.application)
 
