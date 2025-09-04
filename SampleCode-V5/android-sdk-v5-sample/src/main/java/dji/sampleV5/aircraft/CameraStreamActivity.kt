@@ -200,6 +200,9 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         binding.btnAbortRemoteControl.setOnClickListener {
             viewModel.abortDroneControl()
         }
+        binding.btnLandOff.setOnClickListener {
+            viewModel.landOffDrone()
+        }
         listOf(
             binding.btnForward,
             binding.btnBackward,

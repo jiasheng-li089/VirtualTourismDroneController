@@ -105,6 +105,8 @@ interface IDroneController {
 
     fun abort()
 
+    fun landOff()
+
     fun changeDroneVelocity(
         forwardBackward: Double = 0.0,
         rightLeft: Double = 0.0,
@@ -143,6 +145,9 @@ abstract class BaseDroneController(
 
             this@BaseDroneController.isReady = false
         }
+    }
+
+    override fun landOff() {
     }
 }
 
@@ -438,6 +443,11 @@ class VirtualDroneController(
 
         prepareJob?.cancel()
         prepareJob = null
+    }
+
+    override fun landOff() {
+        Timber.d("Start to land off the drone.")
+        KeyTools.createKey(FlightControllerKey.KeyStartAutoLanding).action()
     }
 
     override fun destroy() {

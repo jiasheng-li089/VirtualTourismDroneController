@@ -281,6 +281,10 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         remoteControlUIStatus.postValue(true)
     }
 
+    fun landOffDrone() {
+        droneController?.landOff()
+    }
+
     fun flightToDirection(direction: Int) {
         // comment this check for debugging
         if (droneController?.isDroneReady() != true) {

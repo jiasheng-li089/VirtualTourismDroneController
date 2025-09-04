@@ -83,6 +83,12 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal|bottom"
             android:text="Abort Remote control" />
+
+        <Button
+            android:id="@+id/btn_land_off"
+            android:text="Land Off"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
     </LinearLayout>
 
     <androidx.appcompat.widget.AppCompatSpinner
