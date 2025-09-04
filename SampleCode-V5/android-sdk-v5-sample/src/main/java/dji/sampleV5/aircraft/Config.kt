@@ -2,7 +2,7 @@ package dji.sampleV5.aircraft
 
 
 // if use the camera mounted on drone as the video source
-const val USE_DRONE_CAMERA = false
+const val USE_DRONE_CAMERA = true
 
 
 // if use the mock control class to test the control data sent from the headset
@@ -18,6 +18,7 @@ const val PING_INTERVAL = 1000L
 const val SENDING_FREQUENCY = 5
 
 
+// current configuration of the thumb stick control scale factors
 lateinit var currentControlScaleConfiguration: ControlStickScaleConfiguration
 
 
