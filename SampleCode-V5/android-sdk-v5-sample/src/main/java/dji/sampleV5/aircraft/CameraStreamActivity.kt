@@ -29,6 +29,7 @@ import dji.sampleV5.aircraft.databinding.ActivityCameraStreamBinding
 import dji.sampleV5.aircraft.models.CameraStreamVM
 import dji.sampleV5.aircraft.utils.BaseViewHolder
 import dji.sampleV5.aircraft.utils.format
+import dji.sampleV5.aircraft.utils.getControlStickScaleConfiguration
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
@@ -298,6 +299,7 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 position: Int,
                 id: Long
             ) {
+                binding.spinnerControlScaleConfiguration.visibility = if (position == 0) View.VISIBLE else View.GONE
                 viewModel.remoteControlMode.postValue(position)
             }
 
@@ -307,19 +309,58 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
         viewModel.remoteControlUIStatus.observe(this) {
             binding.spinnerControlMode.isEnabled = it
+            binding.spinnerControlScaleConfiguration.isEnabled = it
         }
+        val configurations = getControlStickScaleConfiguration(this)
+        binding.spinnerControlScaleConfiguration.adapter = object : BaseAdapter() {
+            override fun getCount() = configurations.size
+
+            override fun getItem(position: Int): Any? = configurations[position]
+
+            override fun getItemId(position: Int) = position.toLong()
+
+            override fun getView(
+                position: Int,
+                convertView: View?,
+                parent: ViewGroup?
+            ): View? {
+                val view = convertView ?: LayoutInflater.from(this@CameraStreamActivity).inflate(R.layout.item_monitoring_status, parent, false)
+                (view as? TextView)?.let {
+                    it.text = configurations[position].name
+                    it.setBackgroundColor(Color.TRANSPARENT)
+                    it.setPadding( resources.getDimensionPixelSize(R.dimen.uxsdk_10_dp))
+                }
+                return view
+            }
+
+        }
+        binding.spinnerControlScaleConfiguration.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                currentControlScaleConfiguration = configurations[position]
+                val msg = "Current control scale configuration is ${currentControlScaleConfiguration.name}:\n${currentControlScaleConfiguration.description}"
+                val msgPair = if ("No_Scale" == currentControlScaleConfiguration.name) {
+                    Pair(Log.ERROR, msg)
+                } else {
+                    Pair(Log.INFO, msg)
+                }
+                appendMessageToUI(msgPair)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+            }
+        }
+        binding.spinnerControlScaleConfiguration.setSelection(0)
 
         viewModel.initialize(this.application)
 
         lifecycleScope.launch(Dispatchers.Main) {
             viewModel.message.collect { msg ->
-                val needToScrollToEnd = binding.imgScrollToBottom.visibility != View.VISIBLE
-                (binding.rvMessage.adapter as? MessageAdapter)?.appendMessage(msg.first, msg.second)
-                if (needToScrollToEnd) {
-                    (binding.rvMessage.layoutManager as? LinearLayoutManager)?.scrollToPosition(
-                        binding.rvMessage.adapter!!.itemCount - 1
-                    )
-                }
+                appendMessageToUI(msg)
             }
         }
         lifecycleScope.launch(Dispatchers.Main) {
@@ -331,6 +372,16 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     )
                 }
             }
+        }
+    }
+
+    private fun appendMessageToUI(msg: Pair<Int, String>) {
+        val needToScrollToEnd = binding.imgScrollToBottom.visibility != View.VISIBLE
+        (binding.rvMessage.adapter as? MessageAdapter)?.appendMessage(msg.first, msg.second)
+        if (needToScrollToEnd) {
+            (binding.rvMessage.layoutManager as? LinearLayoutManager)?.scrollToPosition(
+                binding.rvMessage.adapter!!.itemCount - 1
+            )
         }
     }
 

@@ -2,6 +2,7 @@ package dji.sampleV5.aircraft.virtualcontroller
 
 import android.util.Log
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
+import dji.sampleV5.aircraft.currentControlScaleConfiguration
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
@@ -30,6 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import kotlin.math.abs
+import kotlin.math.pow
 
 
 typealias ControlStatusFeedback = (String, String) -> Unit
@@ -53,20 +55,27 @@ class ControlViaThumbSticks() : IControlStrategy {
 
     override fun onControllerStatusData(data: ControlStatusData) {
         VirtualStickManager.getInstance().leftStick.let {
-            it.horizontalPosition = mappingValues(data.leftThumbStickValue.x).toInt() / 10
-            it.verticalPosition = mappingValues(data.leftThumbStickValue.y).toInt() / 10
+            // rotation
+            it.horizontalPosition = (mappingValues(data.leftThumbStickValue.x)
+                    / currentControlScaleConfiguration.scale.left_horizontal).toInt()
+            // upward and downward
+            it.verticalPosition = (mappingValues(data.leftThumbStickValue.y)
+                    / currentControlScaleConfiguration.scale.left_vertical).toInt()
         }
         VirtualStickManager.getInstance().rightStick?.let {
-            it.horizontalPosition = mappingValues(data.rightThumbStickValue.x).toInt() / 10
-            it.verticalPosition = mappingValues(data.rightThumbStickValue.y).toInt() / 10
+            // left and right
+            it.horizontalPosition = (mappingValues(data.rightThumbStickValue.x)
+                    / currentControlScaleConfiguration.scale.right_horizontal).toInt()
+            // forward and backward
+            it.verticalPosition = (mappingValues(data.rightThumbStickValue.y)
+                    / currentControlScaleConfiguration.scale.right_vertical).toInt()
         }
     }
 
     fun mappingValues(input: Float): Float {
-        var tmp: Float = (if (abs(input) >= 0.1f) (abs(input) - 0.1f) / 0.9 else 0f) as Float
-        tmp = if (input > 0) tmp * tmp else - tmp*tmp
+        val tmp = input.toDouble().pow(5.0)
 
-        return tmp * Stick.MAX_STICK_POSITION_ABS
+        return (tmp * Stick.MAX_STICK_POSITION_ABS).toFloat()
     }
 
 }
@@ -228,8 +237,10 @@ class VirtualDroneController(
     override fun switchDroneStatus(isReady: Boolean) {
         if (isReady) {
             if (true == controlStrategy?.isVirtualStickNeeded()) {
-                changeVirtualStickStatus(enable = true,
-                    syncAdvancedParam = true == controlStrategy?.isVirtualStickAdvancedParamNeeded()) {
+                changeVirtualStickStatus(
+                    enable = true,
+                    syncAdvancedParam = true == controlStrategy?.isVirtualStickAdvancedParamNeeded()
+                ) {
                     if (it) {
                         prepareJob?.cancel()
                         prepareJob = null
@@ -526,7 +537,11 @@ class VirtualDroneController(
             })
     }
 
-    private fun changeVirtualStickStatus(enable: Boolean, syncAdvancedParam: Boolean, action: ((Boolean) -> Unit)?) {
+    private fun changeVirtualStickStatus(
+        enable: Boolean,
+        syncAdvancedParam: Boolean,
+        action: ((Boolean) -> Unit)?
+    ) {
         if (enable) {
             VirtualStickManager.getInstance()
                 .enableVirtualStick(object : CommonCallbacks.CompletionCallback {

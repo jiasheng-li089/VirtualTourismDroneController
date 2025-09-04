@@ -1,0 +1,32 @@
+[
+  {
+    "name" : "Scale_10",
+    "scale" : {
+      "right_horizontal" : 10,
+      "right_vertical" : 10,
+      "left_horizontal" : 10,
+      "left_vertical" : 10
+    },
+    "description" : "All operations will be scaled down to 1/10."
+  },
+  {
+    "name" : "Rotation_5_Others_10",
+    "scale" : {
+      "right_horizontal" : 10,
+      "right_vertical" : 10,
+      "left_horizontal" : 5,
+      "left_vertical" : 10
+    },
+    "description" : "The rotation will be scaled down to 1/5, others will be scaled down to 1/10."
+  },
+  {
+    "name" : "No_Scale",
+    "scale" : {
+      "right_horizontal" : 1,
+      "right_vertical" : 1,
+      "left_horizontal" : 1,
+      "left_vertical" : 1
+    },
+    "description" : "All operation will be synchronized to drone controller directly. Use this configuration very carefully, please!!!"
+  }
+]

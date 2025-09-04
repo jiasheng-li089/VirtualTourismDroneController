@@ -3,9 +3,11 @@ package dji.sampleV5.aircraft
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
+import com.google.gson.Gson
 import dji.sampleV5.aircraft.log.FileLoggingTree
 import dji.sampleV5.aircraft.models.MSDKManagerVM
 import dji.sampleV5.aircraft.models.globalViewModels
+import dji.sampleV5.aircraft.utils.getControlStickScaleConfiguration
 import timber.log.Timber
 import java.io.File
 import java.text.SimpleDateFormat
@@ -48,6 +50,8 @@ open class DJIApplication : Application() {
             Timber.e(e)
             tree?.destroy()
         }
+
+        currentControlScaleConfiguration = getControlStickScaleConfiguration(this)[0]
     }
 
     override fun onTerminate() {
