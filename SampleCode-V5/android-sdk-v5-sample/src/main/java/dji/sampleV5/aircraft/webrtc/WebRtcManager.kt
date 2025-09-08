@@ -26,6 +26,7 @@ import org.webrtc.RTCStatsCollectorCallback
 import org.webrtc.RTCStatsReport
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
+import timber.log.Timber
 import java.nio.ByteBuffer
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -42,8 +43,6 @@ const val VIDEO_PUBLISHER = "videoPublisher"
 const val DATA_RECEIVER = "dataReceiver"
 
 const val STUN_SERVER = "stun:stun.l.google.com:19302"
-
-private const val TAG = "WebRtcManager"
 
 const val EVENT_CREATE_CONNECTION_ERROR_FOR_PUBLICATION = "create_connection_error"
 const val EVENT_CREATE_CONNECTION_SUCCESS_FOR_PUBLICATION = "create_connection_success"
@@ -299,27 +298,27 @@ abstract class BaseWebRtcConnection (
         val conn =
             connectionFactoryProvider.get().createPeerConnection(rtcConfig, object : Observer {
                 override fun onSignalingChange(p0: PeerConnection.SignalingState?) {
-                    Log.d(TAG, "onSignalingChange: $p0")
+                    Timber.d( "onSignalingChange: $p0")
                 }
 
                 override fun onIceConnectionChange(p0: PeerConnection.IceConnectionState?) {
-                    Log.d(TAG, "ICE Connection State: $p0")
+                    Timber.d( "ICE Connection State: $p0")
                 }
 
                 override fun onIceConnectionReceivingChange(p0: Boolean) {
-                    Log.d(TAG, "onIceConnectionReceivingChange: $p0")
+                    Timber.d("onIceConnectionReceivingChange: $p0")
                 }
 
                 override fun onIceGatheringChange(p0: PeerConnection.IceGatheringState?) {
-                    Log.d(TAG, "onIceGatheringChange: $p0")
+                    Timber.d("onIceGatheringChange: $p0")
                 }
 
                 override fun onIceCandidate(p0: IceCandidate?) {
-                    Log.d(TAG, "ICE Candidate: ${p0?.sdp}")
+                    Timber.d("ICE Candidate: ${p0?.sdp}")
                 }
 
                 override fun onIceCandidatesRemoved(p0: Array<out IceCandidate>?) {
-                    Log.d(TAG, "onIceCandidatesRemoved")
+                    Timber.d("onIceCandidatesRemoved")
                 }
 
                 override fun onAddStream(p0: MediaStream?) {
@@ -335,7 +334,7 @@ abstract class BaseWebRtcConnection (
                 }
 
                 override fun onRenegotiationNeeded() {
-                    Log.d(TAG, "onRenogotiationNeeded")
+                    Timber.d("onRenogotiationNeeded")
                 }
             })
         if (null == conn) {
@@ -381,11 +380,11 @@ abstract class BaseWebRtcConnection (
 
         val dataObserver = object : DataChannel.Observer {
             override fun onBufferedAmountChange(p0: Long) {
-                Log.d(TAG, "onBufferedAmountChange: $p0")
+                Timber.d("onBufferedAmountChange: $p0")
             }
 
             override fun onStateChange() {
-                Log.d(TAG, "onStateChange: ${channel.state()}")
+                Timber.d("onStateChange: ${channel.state()}")
             }
 
             override fun onMessage(p0: DataChannel.Buffer?) {
@@ -394,14 +393,14 @@ abstract class BaseWebRtcConnection (
                     val byteArray = ByteArray(it.data.remaining())
                     it.data.get(byteArray)
                     val message = byteArray.decodeToString()
-                    Log.d(TAG, "Got message from channel: ${identity}.${channel.label()}: $message")
+                    Timber.d("Got message from channel: ${identity}.${channel.label()}: $message")
 
                     eventEmitter.emit(
                         WebRtcEvent(
                             EVENT_RECEIVED_DATA, DataFromChannel(identity, message, channel.label())
                         )
                     )
-                }
+            }
             }
 
         }

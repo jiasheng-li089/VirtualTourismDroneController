@@ -28,7 +28,7 @@ interface IPositionMonitor {
     fun stop()
 }
 
-open class DroneSpatialPositionMonitor (private var observable: RawDataObservable) : OnRawDataObserver, IPositionMonitor {
+open class DroneSpatialPositionMonitor (private var observable: RawDataObservable, private val statusUpdater: StatusUpdater?) : OnRawDataObserver, IPositionMonitor {
 
     private var x: Double = 0.0
 
@@ -86,6 +86,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         y += velocityAroundY * timeDifference / 1000L
         x += velocityAroundX * timeDifference / 1000L
         lastPositionUpdateTime += timeDifference
+
+        statusUpdater?.invoke("Drone Position (X/Y/Z)", "$x / $y / $z")
     }
 
     private fun updateAttitude(attitude: Attitude) {
@@ -142,8 +144,9 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
 class DroneSpatialPositionMonitorWithEFence(
     private val fence: RectF,
     private val updateVelocityInterval: Long,
-    observable: RawDataObservable
-): DroneSpatialPositionMonitor(observable) {
+    observable: RawDataObservable,
+    statusUpdater: StatusUpdater?
+): DroneSpatialPositionMonitor(observable, statusUpdater) {
 
     override fun convertCoordinateToNED(xyzVelocities: DoubleArray): DoubleArray {
         val updateIntervalInSeconds = updateVelocityInterval / 1000.0

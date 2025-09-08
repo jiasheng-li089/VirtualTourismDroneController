@@ -18,6 +18,7 @@ import dji.sampleV5.aircraft.USE_DRONE_CAMERA
 import dji.sampleV5.aircraft.USE_MOCK_CONTROL
 import dji.sampleV5.aircraft.utils.format
 import dji.sampleV5.aircraft.utils.toData
+import dji.sampleV5.aircraft.utils.toJson
 import dji.sampleV5.aircraft.virtualcontroller.DroneStatusMonitor
 import dji.sampleV5.aircraft.virtualcontroller.IDroneController
 import dji.sampleV5.aircraft.virtualcontroller.MockDroneController
@@ -60,10 +61,6 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import timber.log.Timber
 import java.util.concurrent.Executors
-
-
-private const val TAG = "CameraStreamVM"
-
 
 
 private val permissions = listOf(
@@ -199,14 +196,18 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                 statusMonitor!!,
                 this::controlStatusFeedback,
                 this::showMessageOnLogAndScreen
-            )
+            ) { key, value ->
+                emitMonitorStatus(mapOf(key to value))
+            }
         else
             VirtualDroneController(
                 viewModelScope,
                 statusMonitor!!,
                 this::controlStatusFeedback,
                 this::showMessageOnLogAndScreen
-            )
+            ) { key, value ->
+                emitMonitorStatus(mapOf(key to value))
+            }
 
         if (BuildConfig.DEBUG) {
             SimulatorManager.getInstance().addSimulatorStateListener(this)
@@ -373,6 +374,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                 val statusData = rootMessage.data.toData(ControlStatusData::class.java)
                 // redirect to UI thread to handle the data
                 viewModelScope.launch(controllerStatusHandleScheduler) {
+                    Timber.d("onControllerStatusData: ${statusData.toJson()}")
                     droneController?.onControllerStatusData(statusData)
                 }
             }

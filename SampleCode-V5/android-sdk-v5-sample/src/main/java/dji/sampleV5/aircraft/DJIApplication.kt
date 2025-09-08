@@ -3,6 +3,7 @@ package dji.sampleV5.aircraft
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import com.google.gson.Gson
 import dji.sampleV5.aircraft.log.FileLoggingTree
 import dji.sampleV5.aircraft.models.MSDKManagerVM
@@ -43,7 +44,7 @@ open class DJIApplication : Application() {
             Date()
         )}.log")
 
-        tree = FileLoggingTree(logFile)
+        tree = FileLoggingTree(logFile, targetLevel = MINIMUM_LOG_LEVEL)
         Timber.plant(tree!!)
 
         Thread.setDefaultUncaughtExceptionHandler { thread, e->

@@ -39,6 +39,7 @@ import kotlin.math.pow
 
 typealias ControlStatusFeedback = (String, String) -> Unit
 typealias MessageNotifier = (Int, String, Throwable?) -> Unit
+typealias StatusUpdater = (String, String) -> Unit
 
 private fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
     val param = VirtualStickFlightControlParam()
@@ -161,6 +162,7 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
         velocities = positionMonitor.convertCoordinateToNED(velocities)
 
         // set the velocities to the drone
+        Timber.i("Update drone velocities: ${velocities[0]} / ${velocities[1]} / ${velocities[2]}")
         adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
 
         // update last valid sample time
@@ -210,6 +212,7 @@ abstract class BaseDroneController(
     protected val observable: RawDataObservable,
     protected val controlStatusFeedback: ControlStatusFeedback?,
     protected val messageNotifier: MessageNotifier?,
+    protected val statusUpdater: StatusUpdater?
 ) : IDroneController {
 
     private var isReady: Boolean = false
@@ -239,7 +242,8 @@ class MockDroneController(
     observable: RawDataObservable,
     controlStatusFeedback: ControlStatusFeedback?,
     messageNotifier: MessageNotifier?,
-) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier) {
+    statusUpdater: StatusUpdater?
+) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier, statusUpdater) {
 
     override fun getInitialLocation(): LocationCoordinate3D? {
         return null
@@ -278,7 +282,8 @@ class VirtualDroneController(
     observable: RawDataObservable,
     controlStatusFeedback: ControlStatusFeedback?,
     messageNotifier: MessageNotifier?,
-) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier) {
+    statusUpdater: StatusUpdater?
+) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier, statusUpdater) {
 
     private var prepareJob: Job? = null
 
@@ -319,9 +324,9 @@ class VirtualDroneController(
 
             positionMonitor = if (true == controlStrategy?.isVirtualStickAdvancedParamNeeded())
                 DroneSpatialPositionMonitorWithEFence(currentEFence,
-                    1000L / SENDING_FREQUENCY, observable)
+                    1000L / SENDING_FREQUENCY, observable, statusUpdater)
             else
-                DroneSpatialPositionMonitor(observable)
+                DroneSpatialPositionMonitor(observable, statusUpdater)
 
             if (true == controlStrategy?.isVirtualStickNeeded()) {
                 positionMonitor?.start()
