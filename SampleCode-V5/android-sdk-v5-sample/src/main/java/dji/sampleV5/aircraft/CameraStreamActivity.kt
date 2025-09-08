@@ -62,7 +62,6 @@ class StatusAdapter(val context: Context) : RecyclerView.Adapter<BaseViewHolder>
                 R.string.hint_flight_mode.idToString() to "N/A",
                 R.string.hint_remote_controller_flight_mode.idToString() to "N/A",
                 R.string.hint_remote_control.idToString() to "N/A",
-
                 )
         )
         if (BuildConfig.DEBUG) {

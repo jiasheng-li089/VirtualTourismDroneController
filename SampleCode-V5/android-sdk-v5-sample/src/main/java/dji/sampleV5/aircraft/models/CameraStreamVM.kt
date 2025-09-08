@@ -104,7 +104,7 @@ data class ControlStatusData(
     var leftThumbStickValue: Vector2D,
     var rightThumbStickValue: Vector2D,
 
-    var lastSampleTime: Long
+    var sampleTimestamp: Long
 )
 
 class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListener {

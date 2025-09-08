@@ -91,10 +91,11 @@ class DroneStatusMonitor(
             val newValue = it.second.invoke(value)
             if (null == newValue) return@let
 
+            notifyRawData(key, value)
+
             notifyUpdate(mapOf(it.first to newValue))
         }
         Timber.d("$key --> ${value?.toString() ?: "null"}")
-        notifyRawData(key, value)
     }
 
     override fun register(

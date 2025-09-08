@@ -1,8 +1,11 @@
 package dji.sampleV5.aircraft.virtualcontroller
 
+import android.graphics.RectF
+import android.os.SystemClock
 import android.util.Log
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.currentControlScaleConfiguration
+import dji.sampleV5.aircraft.currentEFence
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
@@ -37,6 +40,28 @@ import kotlin.math.pow
 typealias ControlStatusFeedback = (String, String) -> Unit
 typealias MessageNotifier = (Int, String, Throwable?) -> Unit
 
+private fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
+    val param = VirtualStickFlightControlParam()
+    param.yaw = 0.0
+    param.roll = 0.0
+    param.pitch = 0.0
+    param.rollPitchCoordinateSystem = FlightCoordinateSystem.GROUND
+    param.verticalControlMode = VerticalControlMode.VELOCITY
+    param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
+    param.rollPitchControlMode = RollPitchControlMode.VELOCITY
+    return param
+}
+
+private fun adjustDroneVelocityOneTime(roll: Double, pitch: Double, yaw: Double, throttle: Double = 0.0) {
+    val param = initDroneAdvancedParam()
+    param.yaw = yaw
+    param.roll = roll
+    param.pitch = pitch
+    param.verticalThrottle = throttle
+
+    Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
+    VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
+}
 
 interface IControlStrategy {
 
@@ -46,6 +71,7 @@ interface IControlStrategy {
 
     fun onControllerStatusData(data: ControlStatusData)
 
+    fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor)
 }
 
 class ControlViaThumbSticks() : IControlStrategy {
@@ -53,7 +79,15 @@ class ControlViaThumbSticks() : IControlStrategy {
 
     override fun isVirtualStickAdvancedParamNeeded() = false
 
+    private var currentValidStatusTimestamp = 0L
+
     override fun onControllerStatusData(data: ControlStatusData) {
+        if (currentValidStatusTimestamp > data.sampleTimestamp) {
+            // ignore the old data, avoid the situation in which the device receives the old data later than the new data
+            return
+        }
+        currentValidStatusTimestamp = data.sampleTimestamp
+
         VirtualStickManager.getInstance().leftStick.let {
             // rotation
             it.horizontalPosition = (mappingValues(data.leftThumbStickValue.x)
@@ -78,22 +112,71 @@ class ControlViaThumbSticks() : IControlStrategy {
         return (tmp * Stick.MAX_STICK_POSITION_ABS).toFloat()
     }
 
+    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor) {
+        // it does not matter, even with position monitor, it is still impossible to achieve accurate control through thumbsticks
+    }
 }
 
-class ControlViaHeadset() : IControlStrategy {
+class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStrategy {
+
+    private lateinit var positionMonitor: IPositionMonitor
+
+    private var lastValidSampleTime = 0L
+
+    private var lastSendCmdTimestamp = 0L
+
     override fun isVirtualStickNeeded(): Boolean = true
 
     override fun isVirtualStickAdvancedParamNeeded(): Boolean = true
 
+    // how to implement the control?
+    // base on two states in each packet to calculate the difference and apply this difference to the drone?
+    // or base on two states (last applied state and currently received state) to calculate the difference?
+
     override fun onControllerStatusData(data: ControlStatusData) {
+        // no valid position monitor, skip the control status data first
+        if (!this::positionMonitor.isInitialized) return
+
+        // receiving old data, ignore it
+        if (lastValidSampleTime >= data.sampleTimestamp) return
+
+        // there is a maximum frequency limitation regarding sending data to the drone through the virtual stick advanced parameters
+        // but the frequency of sampling data in headset is bigger then this valid, so we need to combine multi frames of data into one drone command
+        if (lastValidSampleTime > 0L && SystemClock.elapsedRealtime() - this.lastSendCmdTimestamp <= updateVelocityInterval) {
+            return
+        }
+        val updateIntervalInSeconds = updateVelocityInterval / 1000.0
+
+        // calculate the velocities around x, y, z axes;
+        val currentRelativeHMDX = data.currentPosition.x - data.benchmarkPosition.x
+        val currentRelativeHMDY = data.currentPosition.y - data.benchmarkPosition.y
+        val currentRelativeHMDZ = data.currentPosition.z - data.benchmarkPosition.z
+
+        var velocities = DoubleArray(3)
+        velocities[0] = (currentRelativeHMDX - positionMonitor.getX()) / updateIntervalInSeconds
+        velocities[1] = (currentRelativeHMDY - positionMonitor.getY()) / updateIntervalInSeconds
+        velocities[2] = (currentRelativeHMDZ - positionMonitor.getZ()) / updateIntervalInSeconds
+
+        // convert these velocities to the ones based on NED coordinate system;
+        velocities = positionMonitor.convertCoordinateToNED(velocities)
+
+        // set the velocities to the drone
+        adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
+
+        // update last valid sample time
+        this.lastValidSampleTime = data.sampleTimestamp
+        this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
     }
 
+    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor) {
+        this.positionMonitor = monitor
+    }
 }
 
 fun createControlStrategy(controlMode: Int): IControlStrategy {
     return when (controlMode) {
         0 -> ControlViaThumbSticks() // thumbsticks
-        else -> ControlViaHeadset() // headset
+        else -> ControlViaHeadset(1000L / SENDING_FREQUENCY) // headset
     }
 }
 
@@ -210,6 +293,8 @@ class VirtualDroneController(
 
     private var controlStrategy: IControlStrategy? = null
 
+    private var positionMonitor: IPositionMonitor? = null
+
     init {
         setObstacleAvoidanceWarningDistance(0.1)
         setObstacleAvoidance(false, null)
@@ -225,23 +310,21 @@ class VirtualDroneController(
         })
 
         droneParam = initDroneAdvancedParam()
-    }
-
-    private fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
-        val param = VirtualStickFlightControlParam()
-        param.yaw = 0.0
-        param.roll = 0.0
-        param.pitch = 0.0
-        param.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
-        param.verticalControlMode = VerticalControlMode.VELOCITY
-        param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
-        param.rollPitchControlMode = RollPitchControlMode.VELOCITY
-        return param
+        droneParam.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
     }
 
     override fun switchDroneStatus(isReady: Boolean) {
         if (isReady) {
+            positionMonitor?.stop()
+
+            positionMonitor = if (true == controlStrategy?.isVirtualStickAdvancedParamNeeded())
+                DroneSpatialPositionMonitorWithEFence(currentEFence,
+                    1000L / SENDING_FREQUENCY, observable)
+            else
+                DroneSpatialPositionMonitor(observable)
+
             if (true == controlStrategy?.isVirtualStickNeeded()) {
+                positionMonitor?.start()
                 changeVirtualStickStatus(
                     enable = true,
                     syncAdvancedParam = true == controlStrategy?.isVirtualStickAdvancedParamNeeded()
@@ -250,9 +333,13 @@ class VirtualDroneController(
                         prepareJob?.cancel()
                         prepareJob = null
                         super.switchDroneStatus(isReady)
+                    } else {
+                        positionMonitor?.stop()
                     }
                 }
             } else {
+                // this should not happen
+                positionMonitor?.start()
                 prepareJob?.cancel()
                 prepareJob = null
                 super.switchDroneStatus(true)
@@ -261,6 +348,8 @@ class VirtualDroneController(
             super.switchDroneStatus(false)
             adjustDroneVelocityOneTime(0.0, 0.0, 0.0)
             changeVirtualStickStatus(enable = false, syncAdvancedParam = true, null)
+            positionMonitor?.stop()
+            positionMonitor = null
         }
     }
 
@@ -289,54 +378,6 @@ class VirtualDroneController(
             Timber.d("already flying, set the status to ready, ignore setting home location and enable virtual stick control")
             switchDroneStatus(true)
             return
-
-            // because of these callbacks are unreliable within indoor and outdoor environments, respectively.
-            Timber.d("already flying, try to retrieve current location as the initial position")
-            initialLocation = null
-
-            // already flying, regard current location as the initial location
-            prepareJob = scope.launch(Dispatchers.IO) {
-                // within indoor environment, the sdk won't return the location of the drone because of no GPS signal, then how to detect the height???
-                rawDataObserver[0] = observable.register(locationKey) { key, value ->
-                    if (locationKey.innerIdentifier == key.innerIdentifier && null != (value as? LocationCoordinate3D)) {
-                        Timber.d("Retrieved valid location from gps (#1)")
-                        rawDataObserver[0]?.let {
-                            observable.unregister(locationKey, it)
-                            rawDataObserver[0] = null
-                        }
-                        initialLocation = value
-                        isInDoor = false
-                        initHeight = initialLocation!!.altitude
-                    }
-                }
-
-                do {
-                    delay(100)
-                    if (null == rawDataObserver[1]) {
-                        Timber.d("Register ultrasonic height listener")
-                        // that doesn't make sense at all, when the drone is hovering, ultrasonic won't return any thing
-                        rawDataObserver[1] =
-                            observable.register(ultrasonicHeightKey) { key, value ->
-                                if (ultrasonicHeightKey.innerIdentifier == key.innerIdentifier && null != (value as? Int)) {
-                                    Timber.d("Retrieved valid height from ultrasonic (#1): $value")
-                                    rawDataObserver[1]?.let {
-                                        observable.unregister(ultrasonicHeightKey, it)
-                                        rawDataObserver[1] = null
-                                    }
-                                    // the unit of the ultrasonic height is decimeter
-                                    initHeight = value / 10.0
-                                    isInDoor = true
-                                }
-                            }
-                    }
-                } while (prepareJob?.isActive == true && (!isInDoor && null == initialLocation))
-
-                if (true == prepareJob?.isActive) {
-                    if (null != initialLocation) settingHomeLocation()
-                    switchDroneStatus(true)
-                }
-                prepareJob = null
-            }
         } else {
             initialLocation = null
             isInDoor = true
@@ -483,15 +524,6 @@ class VirtualDroneController(
         }
     }
 
-    private fun adjustDroneVelocityOneTime(roll: Double, pitch: Double, yaw: Double) {
-        val param = initDroneAdvancedParam()
-        param.yaw = yaw
-        param.roll = roll
-        param.pitch = pitch
-
-        Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
-        VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
-    }
 
     private fun setObstacleAvoidanceWarningDistance(distance: Double) {
         listOf(
