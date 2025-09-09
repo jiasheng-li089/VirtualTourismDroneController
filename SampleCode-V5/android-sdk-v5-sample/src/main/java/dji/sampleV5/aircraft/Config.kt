@@ -5,11 +5,11 @@ import android.util.Log
 
 
 // if use the camera mounted on drone as the video source
-const val USE_DRONE_CAMERA = false
+const val USE_DRONE_CAMERA = true
 
 
 // if use the mock control class to test the control data sent from the headset
-const val USE_MOCK_CONTROL = true
+const val USE_MOCK_CONTROL = false
 
 
 // the interval between sending two 'Ping' packet to test the data latency
@@ -22,8 +22,10 @@ const val SENDING_FREQUENCY = 5
 
 
 // the orientation data returned from drone is not accurate, need to be calibrated.
-const val COMPASS_OFFSET = 17.0
+const val COMPASS_OFFSET = 0.toDouble()
 
+// the movement of the headset will be apply to the drone after applying this scale
+const val HEADSET_MOVEMENT_SCALE = 0.5f
 
 // current configuration of the thumb stick control scale factors
 lateinit var currentControlScaleConfiguration: ControlStickScaleConfiguration

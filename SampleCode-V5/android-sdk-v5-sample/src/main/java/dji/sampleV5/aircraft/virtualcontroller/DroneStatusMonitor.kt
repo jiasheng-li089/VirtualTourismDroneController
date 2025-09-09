@@ -197,7 +197,8 @@ class DroneStatusMonitor(
         droneStatusHandle[FlightControllerKey.KeyAircraftVelocity] =
                 R.string.hint_drone_velocity.idToString() to {
                     (it as? Velocity3D)?.let { velocity3D ->
-                        "%.2f / %.2f / %.2f".format(velocity3D.x, velocity3D.y, velocity3D.z)
+                        "${velocity3D.x} / ${velocity3D.y} / ${velocity3D.z}"
+//                        "%.2f / %.2f / %.2f".format(velocity3D.x, velocity3D.y, velocity3D.z)
                     } ?: "0 / 0 /0"
                 }
 

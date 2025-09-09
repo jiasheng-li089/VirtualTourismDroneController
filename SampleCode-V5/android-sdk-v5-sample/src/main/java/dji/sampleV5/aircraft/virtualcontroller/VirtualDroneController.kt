@@ -3,6 +3,7 @@ package dji.sampleV5.aircraft.virtualcontroller
 import android.graphics.RectF
 import android.os.SystemClock
 import android.util.Log
+import dji.sampleV5.aircraft.HEADSET_MOVEMENT_SCALE
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.currentControlScaleConfiguration
 import dji.sampleV5.aircraft.currentEFence
@@ -72,7 +73,7 @@ interface IControlStrategy {
 
     fun onControllerStatusData(data: ControlStatusData)
 
-    fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor)
+    fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?)
 }
 
 class ControlViaThumbSticks() : IControlStrategy {
@@ -113,14 +114,15 @@ class ControlViaThumbSticks() : IControlStrategy {
         return (tmp * Stick.MAX_STICK_POSITION_ABS).toFloat()
     }
 
-    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor) {
+    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
         // it does not matter, even with position monitor, it is still impossible to achieve accurate control through thumbsticks
+
     }
 }
 
 class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStrategy {
 
-    private lateinit var positionMonitor: IPositionMonitor
+    private var positionMonitor: IPositionMonitor? = null
 
     private var lastValidSampleTime = 0L
 
@@ -136,41 +138,44 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 
     override fun onControllerStatusData(data: ControlStatusData) {
         // no valid position monitor, skip the control status data first
-        if (!this::positionMonitor.isInitialized) return
+        positionMonitor?.let {
+            // receiving old data, ignore it
+            if (lastValidSampleTime >= data.sampleTimestamp) return
 
-        // receiving old data, ignore it
-        if (lastValidSampleTime >= data.sampleTimestamp) return
+            // there is a maximum frequency limitation regarding sending data to the drone through the virtual stick advanced parameters
+            // but the frequency of sampling data in headset is bigger then this valid, so we need to combine multi frames of data into one drone command
+            if (lastValidSampleTime > 0L && SystemClock.elapsedRealtime() - this.lastSendCmdTimestamp <= updateVelocityInterval) {
+                return
+            }
+            val updateIntervalInSeconds = updateVelocityInterval / 1000.0
 
-        // there is a maximum frequency limitation regarding sending data to the drone through the virtual stick advanced parameters
-        // but the frequency of sampling data in headset is bigger then this valid, so we need to combine multi frames of data into one drone command
-        if (lastValidSampleTime > 0L && SystemClock.elapsedRealtime() - this.lastSendCmdTimestamp <= updateVelocityInterval) {
-            return
+            // calculate the velocities around x, y, z axes;
+            val currentRelativeHMDX = (data.currentPosition.x - data.benchmarkPosition.x) * HEADSET_MOVEMENT_SCALE
+            val currentRelativeHMDY = (data.currentPosition.y - data.benchmarkPosition.y) * HEADSET_MOVEMENT_SCALE
+            val currentRelativeHMDZ = data.currentPosition.z - data.benchmarkPosition.z
+
+            var velocities = DoubleArray(3)
+            velocities[0]
+                (currentRelativeHMDX - it.getX()) / updateIntervalInSeconds
+            velocities[1] =
+                (currentRelativeHMDY - it.getY()) / updateIntervalInSeconds
+            velocities[2] =
+                (currentRelativeHMDZ - it.getZ()) / updateIntervalInSeconds
+
+            // convert these velocities to the ones based on NED coordinate system;
+            velocities = it.convertCoordinateToNED(velocities)
+
+            // set the velocities to the drone
+            Timber.i("Update drone velocities: ${velocities[0]} / ${velocities[1]} / ${velocities[2]}")
+            adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
+
+            // update last valid sample time
+            this.lastValidSampleTime = data.sampleTimestamp
+            this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
         }
-        val updateIntervalInSeconds = updateVelocityInterval / 1000.0
-
-        // calculate the velocities around x, y, z axes;
-        val currentRelativeHMDX = data.currentPosition.x - data.benchmarkPosition.x
-        val currentRelativeHMDY = data.currentPosition.y - data.benchmarkPosition.y
-        val currentRelativeHMDZ = data.currentPosition.z - data.benchmarkPosition.z
-
-        var velocities = DoubleArray(3)
-        velocities[0] = (currentRelativeHMDX - positionMonitor.getX()) / updateIntervalInSeconds
-        velocities[1] = (currentRelativeHMDY - positionMonitor.getY()) / updateIntervalInSeconds
-        velocities[2] = (currentRelativeHMDZ - positionMonitor.getZ()) / updateIntervalInSeconds
-
-        // convert these velocities to the ones based on NED coordinate system;
-        velocities = positionMonitor.convertCoordinateToNED(velocities)
-
-        // set the velocities to the drone
-        Timber.i("Update drone velocities: ${velocities[0]} / ${velocities[1]} / ${velocities[2]}")
-        adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
-
-        // update last valid sample time
-        this.lastValidSampleTime = data.sampleTimestamp
-        this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
     }
 
-    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor) {
+    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
         this.positionMonitor = monitor
     }
 }
@@ -315,7 +320,8 @@ class VirtualDroneController(
         })
 
         droneParam = initDroneAdvancedParam()
-        droneParam.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
+        // TODO just for test
+        droneParam.rollPitchCoordinateSystem = FlightCoordinateSystem.GROUND
     }
 
     override fun switchDroneStatus(isReady: Boolean) {
@@ -337,6 +343,7 @@ class VirtualDroneController(
                     if (it) {
                         prepareJob?.cancel()
                         prepareJob = null
+                        controlStrategy?.updateDroneSpatialPositionMonitor(positionMonitor!!)
                         super.switchDroneStatus(isReady)
                     } else {
                         positionMonitor?.stop()
@@ -345,6 +352,7 @@ class VirtualDroneController(
             } else {
                 // this should not happen
                 positionMonitor?.start()
+                controlStrategy?.updateDroneSpatialPositionMonitor(null)
                 prepareJob?.cancel()
                 prepareJob = null
                 super.switchDroneStatus(true)

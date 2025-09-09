@@ -7,6 +7,7 @@ import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.Velocity3D
+import timber.log.Timber
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -48,6 +49,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
 
     private var lastPositionUpdateTime = 0L
 
+    private var lastVelocities: Velocity3D = Velocity3D(0.0, 0.0, 0.0)
+
     private fun resetStatusValues() {
         x = 0.0
         y = 0.0
@@ -63,12 +66,12 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         // only update the position after the attitude is got
         val timeDifference = SystemClock.elapsedRealtime() - lastPositionUpdateTime
 
-        val velocityAroundNorth = velocities.x
-        val velocityAroundEast = velocities.y
-        val velocityAroundDownloadSide = velocities.z
+        val velocityAroundNorth = (velocities.x + lastVelocities.x) / 2
+        val velocityAroundEast = (velocities.y + lastVelocities.y) / 2
+        val velocityAroundDownloadSide = (velocities.z + lastVelocities.z) / 2
 
         // position change around z axis is straightforward enough
-        z += velocityAroundDownloadSide * timeDifference / 1000L
+        z += velocityAroundDownloadSide * timeDifference / 1000f
 
         var velocityAroundY = - velocityAroundNorth * cos(benchmarkOrientation)
 
@@ -77,17 +80,18 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         // for now assume on the right side of north, it will return positive, so `+` is used in below statement
         velocityAroundY += velocityAroundEast * sin(benchmarkOrientation)
 
-
         var velocityAroundX = - velocityAroundEast * cos(benchmarkOrientation)
         // TODO same problem as above one
         velocityAroundX += velocityAroundNorth * sin(benchmarkOrientation)
 
         // update position around x and y axes
-        y += velocityAroundY * timeDifference / 1000L
-        x += velocityAroundX * timeDifference / 1000L
+        y += velocityAroundY * timeDifference / 1000f
+        x += velocityAroundX * timeDifference / 1000f
         lastPositionUpdateTime += timeDifference
 
+        statusUpdater?.invoke("Drone Velocity (X/Y/Z)", "$velocityAroundX / $velocityAroundY / $velocityAroundDownloadSide")
         statusUpdater?.invoke("Drone Position (X/Y/Z)", "$x / $y / $z")
+        lastVelocities = velocities
     }
 
     private fun updateAttitude(attitude: Attitude) {
@@ -98,6 +102,9 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
             lastPositionUpdateTime = SystemClock.elapsedRealtime()
         }
         currentOrientation = attitude.yaw + 180 + COMPASS_OFFSET
+
+        statusUpdater?.invoke("Drone Position (X/Y/Z)", "$x / $y / $z")
+        Timber.d("Update drone virtual position (X/Y/Z): $x / $y / $z")
     }
 
     override fun convertCoordinateToNED(xyzVelocities: DoubleArray): DoubleArray {
@@ -125,11 +132,11 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
     }
 
     override fun invoke(p1: DJIKeyInfo<*>, p2: Any?) {
-        if (p1.innerIdentifier.equals(attitudeKey.innerIdentifier)) {
+        if (p1.innerIdentifier.equals(velocityKey.innerIdentifier)) {
             (p2 as? Velocity3D)?.let {
                 updateVelocities(it)
             }
-        } else if (p1.innerIdentifier.equals(velocityKey.innerIdentifier)) {
+        } else if (p1.innerIdentifier.equals(attitudeKey.innerIdentifier)) {
             (p2 as? Attitude)?.let { updateAttitude(it) }
         }
     }
