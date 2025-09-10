@@ -293,7 +293,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         }
         val velocity = 0.25
         when (direction) {
-            R.id.btn_forward -> { // forward
+            R.id.btn_forward -> { // forward // North
                 showMessageOnLogAndScreen(Log.DEBUG, "Press forward")
                 droneController?.changeDroneVelocity(velocity)
             }

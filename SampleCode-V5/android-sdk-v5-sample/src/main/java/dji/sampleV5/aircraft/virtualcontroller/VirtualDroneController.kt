@@ -204,6 +204,15 @@ interface IDroneController {
         period: Long = 1000,
     )
 
+    fun changeDroneVelocityBaseOnGround(
+        northAndSouth: Double = 0.0,
+        eastAndWest: Double = 0.0,
+        rotateRightLeft: Double = 0.0,
+        period: Long = 1000,
+    ) {
+
+    }
+
     fun onControllerStatusData(data: ControlStatusData)
 
     fun destroy()
@@ -491,6 +500,23 @@ class VirtualDroneController(
         }
     }
 
+    override fun changeDroneVelocityBaseOnGround(
+        northAndSouth: Double,
+        eastAndWest: Double,
+        rotateRightLeft: Double,
+        period: Long,
+    ) {
+        adjustDroneVelocity(northAndSouth, eastAndWest, rotateRightLeft)
+
+        if (period <= 0) return
+
+        scope.launch (Dispatchers.Main) {
+            delay(period)
+
+            adjustDroneVelocity()
+        }
+    }
+
 
     override fun abort() {
         switchDroneStatus(false)
@@ -512,13 +538,17 @@ class VirtualDroneController(
     }
 
     /**
-     * In velocity model, roll means forward/backward, pitch means right/left
+     * In velocity mode and body coordinate system, roll means forward/backward, pitch means right/left
      * yaw: positive rotate towards right, negative rotate towards left
+     *
+     * TODO In velocity mode and ground coordinate system, roll means x axis (North), pitch means y axis (East),
+     *  throttle means z axis (Down), and yaw for rotation
      */
-    private fun adjustDroneVelocity(roll: Double = 0.0, pitch: Double = 0.0, yaw: Double = 0.0) {
+    private fun adjustDroneVelocity(roll: Double = 0.0, pitch: Double = 0.0, yaw: Double = 0.0, throttle: Double = 0.0) {
         droneParam.yaw = yaw
         droneParam.roll = roll
         droneParam.pitch = pitch
+        droneParam.verticalThrottle = throttle
 
         val log =
             "Change drone's velocity: ${if (pitch > 0) "Backward" else "Forward"}: ${abs(pitch)}\t" +
