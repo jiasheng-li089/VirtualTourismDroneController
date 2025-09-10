@@ -26,6 +26,7 @@ import dji.sdk.keyvalue.value.flightcontroller.FlightMode
 import dji.sdk.keyvalue.value.flightcontroller.RemoteControllerFlightMode
 import dji.sdk.keyvalue.value.flightcontroller.WindDirection
 import dji.sdk.keyvalue.value.flightcontroller.WindWarning
+import dji.v5.et.create
 import dji.v5.et.get
 import dji.v5.manager.aircraft.perception.PerceptionManager
 import dji.v5.manager.aircraft.perception.data.ObstacleData
@@ -93,18 +94,19 @@ class DroneStatusMonitor(
             readVelocityJob?.cancel()
 
             readVelocityJob = scope.launch(velocityScheduler) {
-                val velocityKey = KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity)
+                delay(10)
+                Timber.d("Current read velocity job is valid: ${null != readVelocityJob && true != readVelocityJob?.isCancelled}")
+                val velocityKey = FlightControllerKey.KeyAircraftVelocity.create()
                 while (null != readVelocityJob && true != readVelocityJob?.isCancelled) {
-                    delay(10)
-
-                    velocityKey.get()?.let {
+                    // make the velocity around z axis as NaN to mark it invalid
+                    velocityKey.get(Velocity3D(0.0, 0.0, Double.NaN))?.let {
                         Timber.log(
                             LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY,
                             "Velocity (N/E/D): ${it.x} / ${it.y} / ${it.z}"
                         )
-
-                        onChange(velocityKey as DJIKeyInfo<*>, it)
+                        onChange(FlightControllerKey.KeyAircraftVelocity, it)
                     }
+                    delay(10)
                 }
             }
         }
@@ -232,15 +234,13 @@ class DroneStatusMonitor(
                 } ?: "N/A"
             }
 
-        if (!MONITOR_VELOCITY_ACTIVELY) {
-            droneStatusHandle[FlightControllerKey.KeyAircraftVelocity] =
-                R.string.hint_drone_velocity.idToString() to {
-                    (it as? Velocity3D)?.let { velocity3D ->
-                        "${velocity3D.x} / ${velocity3D.y} / ${velocity3D.z}"
-//                        "%.2f / %.2f / %.2f".format(velocity3D.x, velocity3D.y, velocity3D.z)
-                    } ?: "0 / 0 /0"
-                }
-        }
+        // monitor done velocity
+        droneStatusHandle[FlightControllerKey.KeyAircraftVelocity] =
+            R.string.hint_drone_velocity.idToString() to {
+                (it as? Velocity3D)?.let { velocity3D ->
+                    "${velocity3D.x} / ${velocity3D.y} / ${velocity3D.z}"
+                } ?: "0 / 0 /0"
+            }
 
         // monitor motors status
         droneStatusHandle[FlightControllerKey.KeyAreMotorsOn] = R.string.hint_motors_are_on.idToString() to yesOrNoCallback
@@ -312,7 +312,12 @@ class DroneStatusMonitor(
 //            R.string.hint_taking_off_altitude.idToString() to {
 //                if (null != it) "%.2f".format(it) else "N/A"
 //            }
-        statusHelper = DroneStatusHelper(droneStatusHandle.keys.toList(), this)
+
+        val keyList = droneStatusHandle.keys.toMutableList()
+        if (MONITOR_VELOCITY_ACTIVELY) {
+            keyList.remove(FlightControllerKey.KeyAircraftVelocity)
+        }
+        statusHelper = DroneStatusHelper(keyList, this)
     }
 
     override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
