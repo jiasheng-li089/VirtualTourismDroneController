@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import dji.sampleV5.aircraft.HEADSET_MOVEMENT_SCALE
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
+import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
 import dji.sampleV5.aircraft.currentControlScaleConfiguration
 import dji.sampleV5.aircraft.currentEFence
 import dji.sampleV5.aircraft.models.ControlStatusData
@@ -79,7 +80,7 @@ interface IControlStrategy {
 class ControlViaThumbSticks() : IControlStrategy {
     override fun isVirtualStickNeeded() = true
 
-    override fun isVirtualStickAdvancedParamNeeded() = false
+    override fun isVirtualStickAdvancedParamNeeded() = TEST_VIRTUAL_STICK_ADVANCED_PARAM
 
     private var currentValidStatusTimestamp = 0L
 
@@ -209,9 +210,7 @@ interface IDroneController {
         eastAndWest: Double = 0.0,
         rotateRightLeft: Double = 0.0,
         period: Long = 1000,
-    ) {
-
-    }
+    )
 
     fun onControllerStatusData(data: ControlStatusData)
 
@@ -280,6 +279,15 @@ class MockDroneController(
         period: Long,
     ) {
         Timber.d("Mock to change drone velocity: $forwardBackward / $rightLeft / $rotateRightLeft / $period")
+    }
+
+    override fun changeDroneVelocityBaseOnGround(
+        northAndSouth: Double,
+        eastAndWest: Double,
+        rotateRightLeft: Double,
+        period: Long
+    ) {
+        Timber.d("Mock to change drone velocity: $northAndSouth / $eastAndWest / $rotateRightLeft / $period")
     }
 
     override fun onControllerStatusData(data: ControlStatusData) {

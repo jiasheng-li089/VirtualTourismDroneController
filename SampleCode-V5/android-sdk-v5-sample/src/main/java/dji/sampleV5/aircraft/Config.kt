@@ -33,6 +33,14 @@ lateinit var currentControlScaleConfiguration: ControlStickScaleConfiguration
 // all log with level larger or equals to this level will be stored in log file
 const val MINIMUM_LOG_LEVEL = Log.DEBUG
 
+
+// use the button on screen to test the advanced parameter of drone control
+const val TEST_VIRTUAL_STICK_ADVANCED_PARAM = true
+
+
+// monitor the velocity changes actively or passively
+const val MONITOR_VELOCITY_ACTIVELY = true
+
 // current valid electrical fence
 val currentEFence = RectF(-10f, 10f, 10f, -10f)
 

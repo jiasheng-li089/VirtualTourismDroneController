@@ -10,7 +10,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class FileLoggingTree (logFile: File, private val targetLevel: Int = Log.INFO): Timber.DebugTree() {
+open class FileLoggingTree (logFile: File, protected val targetLevel: Int = Log.INFO): Timber.DebugTree() {
 
     private val writer = BufferedWriter(FileWriter(logFile, true))
 
@@ -45,5 +45,18 @@ class FileLoggingTree (logFile: File, private val targetLevel: Int = Log.INFO): 
     fun destroy() {
         writer.flush()
         writer.closeQuietly()
+    }
+}
+
+class ExactLevelLoggingTree(logFile: File, targetLevel: Int) : FileLoggingTree(logFile, targetLevel) {
+    override fun log(
+        priority: Int,
+        tag: String?,
+        message: String,
+        t: Throwable?
+    ) {
+        if (priority == targetLevel) {
+            super.log(priority, tag, message, t)
+        }
     }
 }

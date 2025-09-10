@@ -50,3 +50,10 @@ fun getControlStickScaleConfiguration(context: Context): List<ControlStickScaleC
     rawInputStream.closeQuietly()
     return configurationList
 }
+
+
+object LogLevel {
+
+    val VERBOSE_DRONE_VELOCITY_READ_ACTIVELY = -10
+
+}

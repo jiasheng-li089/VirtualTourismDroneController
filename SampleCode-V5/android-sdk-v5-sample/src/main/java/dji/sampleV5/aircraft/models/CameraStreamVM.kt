@@ -295,22 +295,22 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         when (direction) {
             R.id.btn_forward -> { // forward // North
                 showMessageOnLogAndScreen(Log.DEBUG, "Press forward")
-                droneController?.changeDroneVelocity(velocity)
+                droneController?.changeDroneVelocityBaseOnGround(velocity)
             }
 
             R.id.btn_backward -> { // backward
                 showMessageOnLogAndScreen(Log.DEBUG, "Press backward")
-                droneController?.changeDroneVelocity(-velocity)
+                droneController?.changeDroneVelocityBaseOnGround(-velocity)
             }
 
             R.id.btn_left -> { // left
                 showMessageOnLogAndScreen(Log.DEBUG, "Press left")
-                droneController?.changeDroneVelocity(rightLeft = -velocity)
+                droneController?.changeDroneVelocityBaseOnGround(eastAndWest = -velocity)
             }
 
             R.id.btn_right -> { // right
                 showMessageOnLogAndScreen(Log.DEBUG, "Press right")
-                droneController?.changeDroneVelocity(rightLeft = velocity)
+                droneController?.changeDroneVelocityBaseOnGround(eastAndWest = velocity)
             }
 
             R.id.btn_rotate_left -> {

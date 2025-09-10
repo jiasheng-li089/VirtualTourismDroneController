@@ -3,11 +3,11 @@ package dji.sampleV5.aircraft
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
-import android.util.Log
-import com.google.gson.Gson
+import dji.sampleV5.aircraft.log.ExactLevelLoggingTree
 import dji.sampleV5.aircraft.log.FileLoggingTree
 import dji.sampleV5.aircraft.models.MSDKManagerVM
 import dji.sampleV5.aircraft.models.globalViewModels
+import dji.sampleV5.aircraft.utils.LogLevel
 import dji.sampleV5.aircraft.utils.getControlStickScaleConfiguration
 import timber.log.Timber
 import java.io.File
@@ -29,6 +29,8 @@ open class DJIApplication : Application() {
 
     private var tree: FileLoggingTree? = null
 
+    private var velocityLogTree: FileLoggingTree? = null
+
     override fun onCreate() {
         super.onCreate()
         context = this
@@ -40,16 +42,21 @@ open class DJIApplication : Application() {
         if (!file.exists()) {
             file.mkdirs()
         }
-        logFile = File(file, "${SimpleDateFormat("yyyy_MM_dd_HH_mm", Locale.getDefault()).format(
+        val logSuffix = "${SimpleDateFormat("yyyy_MM_dd_HH_mm", Locale.getDefault()).format(
             Date()
-        )}.log")
+        )}.log"
+        logFile = File(file, logSuffix)
+        velocityLogFile = File(file, "velocity_changes_$logSuffix")
 
         tree = FileLoggingTree(logFile, targetLevel = MINIMUM_LOG_LEVEL)
+        velocityLogTree = ExactLevelLoggingTree(velocityLogFile, LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY)
+
         Timber.plant(tree!!)
 
         Thread.setDefaultUncaughtExceptionHandler { thread, e->
             Timber.e(e)
             tree?.destroy()
+            velocityLogTree?.destroy()
         }
 
         currentControlScaleConfiguration = getControlStickScaleConfiguration(this)[0]
@@ -58,11 +65,14 @@ open class DJIApplication : Application() {
     override fun onTerminate() {
         super.onTerminate()
         tree?.destroy()
+        velocityLogTree?.destroy()
     }
 
     companion object {
 
         private lateinit var logFile: File
+
+        private lateinit var velocityLogFile: File
 
         @SuppressLint("StaticFieldLeak")
         private lateinit var context: Context

@@ -5,15 +5,18 @@ import android.os.SystemClock
 import android.util.ArrayMap
 import android.util.Log
 import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
+import dji.sampleV5.aircraft.MONITOR_VELOCITY_ACTIVELY
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.util.Util
 import dji.sampleV5.aircraft.utils.DroneStatusCallback
 import dji.sampleV5.aircraft.utils.DroneStatusHelper
+import dji.sampleV5.aircraft.utils.LogLevel
 import dji.sampleV5.aircraft.utils.format
 import dji.sdk.keyvalue.key.AirLinkKey
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
@@ -23,6 +26,7 @@ import dji.sdk.keyvalue.value.flightcontroller.FlightMode
 import dji.sdk.keyvalue.value.flightcontroller.RemoteControllerFlightMode
 import dji.sdk.keyvalue.value.flightcontroller.WindDirection
 import dji.sdk.keyvalue.value.flightcontroller.WindWarning
+import dji.v5.et.get
 import dji.v5.manager.aircraft.perception.PerceptionManager
 import dji.v5.manager.aircraft.perception.data.ObstacleData
 import dji.v5.manager.aircraft.perception.data.PerceptionInfo
@@ -33,8 +37,12 @@ import dji.v5.manager.aircraft.virtualstick.VirtualStickState
 import dji.v5.manager.aircraft.virtualstick.VirtualStickStateListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 typealias OnRawDataObserver = (DJIKeyInfo<*>, Any?) -> Unit
@@ -66,6 +74,10 @@ class DroneStatusMonitor(
 
     var droneInitialLocation: LocationCoordinate3D? = null
 
+    private var velocityScheduler = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+
+    private var readVelocityJob: Job? = null
+
 
     fun startMonitoring() {
         if (null == statusHelper) {
@@ -76,9 +88,34 @@ class DroneStatusMonitor(
         VirtualStickManager.getInstance().setVirtualStickStateListener(this)
         PerceptionManager.getInstance().addPerceptionInformationListener(this)
         PerceptionManager.getInstance().addObstacleDataListener(this)
+
+        if (MONITOR_VELOCITY_ACTIVELY) {
+            readVelocityJob?.cancel()
+
+            readVelocityJob = scope.launch(velocityScheduler) {
+                val velocityKey = KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity)
+                while (null != readVelocityJob && true != readVelocityJob?.isCancelled) {
+                    delay(10)
+
+                    velocityKey.get()?.let {
+                        Timber.log(
+                            LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY,
+                            "Velocity (N/E/D): ${it.x} / ${it.y} / ${it.z}"
+                        )
+
+                        onChange(velocityKey as DJIKeyInfo<*>, it)
+                    }
+                }
+            }
+        }
     }
 
     fun stopMonitoring() {
+        if (MONITOR_VELOCITY_ACTIVELY) {
+            readVelocityJob?.cancel()
+            readVelocityJob = null
+        }
+
         statusHelper?.stopListen()
 
         VirtualStickManager.getInstance().removeVirtualStickStateListener(this)
@@ -194,13 +231,16 @@ class DroneStatusMonitor(
                     "%.2f / %.2f / %.2f".format(attitude.yaw, attitude.roll, attitude.pitch)
                 } ?: "N/A"
             }
-        droneStatusHandle[FlightControllerKey.KeyAircraftVelocity] =
+
+        if (!MONITOR_VELOCITY_ACTIVELY) {
+            droneStatusHandle[FlightControllerKey.KeyAircraftVelocity] =
                 R.string.hint_drone_velocity.idToString() to {
                     (it as? Velocity3D)?.let { velocity3D ->
                         "${velocity3D.x} / ${velocity3D.y} / ${velocity3D.z}"
 //                        "%.2f / %.2f / %.2f".format(velocity3D.x, velocity3D.y, velocity3D.z)
                     } ?: "0 / 0 /0"
                 }
+        }
 
         // monitor motors status
         droneStatusHandle[FlightControllerKey.KeyAreMotorsOn] = R.string.hint_motors_are_on.idToString() to yesOrNoCallback
