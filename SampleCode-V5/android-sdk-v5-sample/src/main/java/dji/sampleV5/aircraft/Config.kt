@@ -5,7 +5,7 @@ import android.util.Log
 
 
 // if use the camera mounted on drone as the video source
-const val USE_DRONE_CAMERA = true
+const val USE_DRONE_CAMERA = false
 
 
 // if use the mock control class to test the control data sent from the headset
@@ -39,7 +39,8 @@ const val TEST_VIRTUAL_STICK_ADVANCED_PARAM = true
 
 
 // monitor the velocity changes actively or passively
-const val MONITOR_VELOCITY_ACTIVELY = true
+const val MONITOR_VELOCITY_AND_ORIENTATION_ACTIVELY = true
+
 
 // current valid electrical fence
 val currentEFence = RectF(-10f, 10f, 10f, -10f)

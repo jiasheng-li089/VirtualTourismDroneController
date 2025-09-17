@@ -86,9 +86,17 @@ data class RootMessage(
 data class Vector2D(
     var x: Float,
     var y: Float
-)
+) {
+    fun to3D(): Vector3D {
+        return Vector3D(x, y, 0.0f)
+    }
+}
 
-data class Vector3D(var x: Float, var y: Float, var z: Float)
+data class Vector3D(var x: Float, var y: Float, var z: Float) {
+    fun to2D(): Vector2D {
+        return Vector2D(x, y)
+    }
+}
 
 data class ControlStatusData(
     var benchmarkPosition: Vector3D,

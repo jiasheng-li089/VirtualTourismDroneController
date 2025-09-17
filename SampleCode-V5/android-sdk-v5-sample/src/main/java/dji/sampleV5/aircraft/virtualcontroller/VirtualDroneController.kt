@@ -1,14 +1,14 @@
 package dji.sampleV5.aircraft.virtualcontroller
 
-import android.graphics.RectF
 import android.os.SystemClock
 import android.util.Log
-import dji.sampleV5.aircraft.HEADSET_MOVEMENT_SCALE
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
 import dji.sampleV5.aircraft.currentControlScaleConfiguration
 import dji.sampleV5.aircraft.currentEFence
 import dji.sampleV5.aircraft.models.ControlStatusData
+import dji.sampleV5.aircraft.models.Vector2D
+import dji.sampleV5.aircraft.models.Vector3D
 import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
@@ -50,17 +50,43 @@ private fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
     param.pitch = 0.0
     param.rollPitchCoordinateSystem = FlightCoordinateSystem.GROUND
     param.verticalControlMode = VerticalControlMode.VELOCITY
-    param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
+    param.yawControlMode = YawControlMode.ANGLE
     param.rollPitchControlMode = RollPitchControlMode.VELOCITY
+    param.verticalControlMode = VerticalControlMode.POSITION
     return param
 }
 
-private fun adjustDroneVelocityOneTime(roll: Double, pitch: Double, yaw: Double, throttle: Double = 0.0) {
+private fun adjustDroneVelocityOneTime(
+    roll: Double? = null,
+    pitch: Double? = null,
+    yaw: Double? = null,
+    throttle: Double? = 0.0,
+) {
     val param = initDroneAdvancedParam()
-    param.yaw = yaw
-    param.roll = roll
-    param.pitch = pitch
-    param.verticalThrottle = throttle
+    if (null == yaw) {
+        // no valid angle, convert to velocity mode and set velocity to 0 to avoid rotation
+        param.yaw = 0.0
+        param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
+    } else {
+        param.yawControlMode = YawControlMode.ANGLE
+        param.yaw = yaw
+    }
+    if (null == roll) {
+        param.roll = 0.0
+    } else {
+        param.roll = roll
+    }
+    if (null != pitch) {
+        param.pitch = 0.0
+    } else {
+        param.pitch = pitch
+    }
+    if (null == throttle) {
+        param.verticalControlMode = VerticalControlMode.VELOCITY
+        param.verticalThrottle = 0.0
+    } else {
+        param.verticalThrottle = throttle
+    }
 
     Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
     VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
@@ -129,6 +155,16 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 
     private var lastSendCmdTimestamp = 0L
 
+    private var benchmarkRotation: Vector3D? = null
+
+    private var lastValidRotation: Vector3D? = null
+
+    private var benchmarkPosition: Vector2D? = null
+
+    private var lastValidPosition: Vector2D? = null
+
+    private var lastPositionAroundZ: Double = 0.0
+
     override fun isVirtualStickNeeded(): Boolean = true
 
     override fun isVirtualStickAdvancedParamNeeded(): Boolean = true
@@ -145,34 +181,92 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 
             // there is a maximum frequency limitation regarding sending data to the drone through the virtual stick advanced parameters
             // but the frequency of sampling data in headset is bigger then this valid, so we need to combine multi frames of data into one drone command
-            if (lastValidSampleTime > 0L && SystemClock.elapsedRealtime() - this.lastSendCmdTimestamp <= updateVelocityInterval) {
+            val currentLocalTimestamp = SystemClock.elapsedRealtime()
+            if (lastValidSampleTime > 0L && currentLocalTimestamp - this.lastSendCmdTimestamp <= updateVelocityInterval) {
                 return
             }
-            val updateIntervalInSeconds = updateVelocityInterval / 1000.0
 
-            // calculate the velocities around x, y, z axes;
-            val currentRelativeHMDX = (data.currentPosition.x - data.benchmarkPosition.x) * HEADSET_MOVEMENT_SCALE
-            val currentRelativeHMDY = (data.currentPosition.y - data.benchmarkPosition.y) * HEADSET_MOVEMENT_SCALE
-            val currentRelativeHMDZ = data.currentPosition.z - data.benchmarkPosition.z
+            if (null == benchmarkRotation) {
+                this.benchmarkRotation = data.benchmarkRotation
+                this.lastValidRotation = data.currentRotation
+            }
+            if (null == benchmarkPosition) {
+                this.benchmarkPosition = data.benchmarkPosition.to2D()
+                this.lastValidPosition = data.currentPosition.to2D()
+            }
 
-            var velocities = DoubleArray(3)
-            velocities[0]
-                (currentRelativeHMDX - it.getX()) / updateIntervalInSeconds
-            velocities[1] =
-                (currentRelativeHMDY - it.getY()) / updateIntervalInSeconds
-            velocities[2] =
-                (currentRelativeHMDZ - it.getZ()) / updateIntervalInSeconds
+            var targetRotationAngle: Double? = null
+            var rollSpeed: Double? = null
+            var pitchSpeed: Double? = null
+            var throttle: Double? = null
 
-            // convert these velocities to the ones based on NED coordinate system;
-            velocities = it.convertCoordinateToNED(velocities)
+            // calculate the rotation angle changes, if it is huge enough, apply this changes to the drone
+            if (abs(data.currentRotation.y - this.lastValidRotation!!.y) >= 2.0) {
+                Timber.d(
+                    "The change in the orientation is large enough to assign a target " +
+                            "orientation to the drone. old orientation: ${this.lastValidRotation!!.y}, new orientation: ${data.currentRotation.y}"
+                )
+                targetRotationAngle =
+                    it.convertOrientationToNED(data.currentRotation.y.toDouble())
+                this.lastValidRotation = data.currentRotation
+            }
 
-            // set the velocities to the drone
-            Timber.i("Update drone velocities: ${velocities[0]} / ${velocities[1]} / ${velocities[2]}")
-            adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
+            // calculate the height (position changes around z axis)
+            if (abs(data.currentPosition.z - lastPositionAroundZ) >= 0.1) {
+                Timber.d("The change in the Z axis is large enough to assign a target position to the drone. Old position: $lastPositionAroundZ, new position: ${data.currentPosition.z}")
+                throttle = data.currentPosition.z.toDouble()
+                this.lastPositionAroundZ = throttle
+            }
 
-            // update last valid sample time
+            // calculate the position changes around x and y axes
+            if (abs(data.currentPosition.x - lastValidPosition!!.x) >= 0.1 || abs(data.currentPosition.y - lastValidPosition!!.y) >= 0.1) {
+                Timber.d("The changes in the X axis and Y axis are large enough to assign speeds in these two directions: Old position: (${lastValidPosition!!.x}, ${lastValidPosition!!.y}), new position: (${data.currentPosition.x}, ${data.currentPosition.y})")
+                val timeGapInSeconds = (currentLocalTimestamp - this.lastSendCmdTimestamp) * 1000L
+                var velocityAroundX = (data.currentPosition.x - lastValidPosition!!.x) / timeGapInSeconds
+                var velocityAroundY = (data.currentPosition.y - lastValidPosition!!.y) / timeGapInSeconds
+
+                // TODO convert the velocities around x and y to the ones around north and east
+            }
+
+            if (null != targetRotationAngle || null != rollSpeed || null != pitchSpeed || null != throttle) {
+                adjustDroneVelocityOneTime(rollSpeed, pitchSpeed, targetRotationAngle, throttle)
+            }
+
             this.lastValidSampleTime = data.sampleTimestamp
-            this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
+
+            // compare current rotation to last valid rotation to calculate the difference
+
+
+            // make this thing simple, ignore the position of the drone, just synchronize the velocity of the headset to the drone
+
+            // for the safety, only apply the rotation to the drone
+
+
+//            val updateIntervalInSeconds = updateVelocityInterval / 1000.0
+//
+//            // calculate the velocities around x, y, z axes;
+//            val currentRelativeHMDX = (data.currentPosition.x - data.benchmarkPosition.x) * HEADSET_MOVEMENT_SCALE
+//            val currentRelativeHMDY = (data.currentPosition.y - data.benchmarkPosition.y) * HEADSET_MOVEMENT_SCALE
+//            val currentRelativeHMDZ = data.currentPosition.z - data.benchmarkPosition.z
+//
+//            var velocities = DoubleArray(3)
+//            velocities[0]
+//                (currentRelativeHMDX - it.getX()) / updateIntervalInSeconds
+//            velocities[1] =
+//                (currentRelativeHMDY - it.getY()) / updateIntervalInSeconds
+//            velocities[2] =
+//                (currentRelativeHMDZ - it.getZ()) / updateIntervalInSeconds
+//
+//            // convert these velocities to the ones based on NED coordinate system;
+//            velocities = it.convertCoordinateToNED(velocities)
+//
+//            // set the velocities to the drone
+//            Timber.i("Update drone velocities: ${velocities[0]} / ${velocities[1]} / ${velocities[2]}")
+//            adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
+//
+//            // update last valid sample time
+//            this.lastValidSampleTime = data.sampleTimestamp
+//            this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
         }
     }
 
@@ -225,7 +319,7 @@ abstract class BaseDroneController(
     protected val observable: RawDataObservable,
     protected val controlStatusFeedback: ControlStatusFeedback?,
     protected val messageNotifier: MessageNotifier?,
-    protected val statusUpdater: StatusUpdater?
+    protected val statusUpdater: StatusUpdater?,
 ) : IDroneController {
 
     private var isReady: Boolean = false
@@ -255,7 +349,7 @@ class MockDroneController(
     observable: RawDataObservable,
     controlStatusFeedback: ControlStatusFeedback?,
     messageNotifier: MessageNotifier?,
-    statusUpdater: StatusUpdater?
+    statusUpdater: StatusUpdater?,
 ) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier, statusUpdater) {
 
     override fun getInitialLocation(): LocationCoordinate3D? {
@@ -285,7 +379,7 @@ class MockDroneController(
         northAndSouth: Double,
         eastAndWest: Double,
         rotateRightLeft: Double,
-        period: Long
+        period: Long,
     ) {
         Timber.d("Mock to change drone velocity: $northAndSouth / $eastAndWest / $rotateRightLeft / $period")
     }
@@ -304,7 +398,7 @@ class VirtualDroneController(
     observable: RawDataObservable,
     controlStatusFeedback: ControlStatusFeedback?,
     messageNotifier: MessageNotifier?,
-    statusUpdater: StatusUpdater?
+    statusUpdater: StatusUpdater?,
 ) : BaseDroneController(scope, observable, controlStatusFeedback, messageNotifier, statusUpdater) {
 
     private var prepareJob: Job? = null
@@ -346,8 +440,10 @@ class VirtualDroneController(
             positionMonitor?.stop()
 
             positionMonitor = if (true == controlStrategy?.isVirtualStickAdvancedParamNeeded())
-                DroneSpatialPositionMonitorWithEFence(currentEFence,
-                    1000L / SENDING_FREQUENCY, observable, statusUpdater)
+                DroneSpatialPositionMonitorWithEFence(
+                    currentEFence,
+                    1000L / SENDING_FREQUENCY, observable, statusUpdater
+                )
             else
                 DroneSpatialPositionMonitor(observable, statusUpdater)
 
@@ -518,7 +614,7 @@ class VirtualDroneController(
 
         if (period <= 0) return
 
-        scope.launch (Dispatchers.Main) {
+        scope.launch(Dispatchers.Main) {
             delay(period)
 
             adjustDroneVelocity()
@@ -552,7 +648,12 @@ class VirtualDroneController(
      * TODO In velocity mode and ground coordinate system, roll means x axis (North), pitch means y axis (East),
      *  throttle means z axis (Down), and yaw for rotation
      */
-    private fun adjustDroneVelocity(roll: Double = 0.0, pitch: Double = 0.0, yaw: Double = 0.0, throttle: Double = 0.0) {
+    private fun adjustDroneVelocity(
+        roll: Double = 0.0,
+        pitch: Double = 0.0,
+        yaw: Double = 0.0,
+        throttle: Double = 0.0,
+    ) {
         droneParam.yaw = yaw
         droneParam.roll = roll
         droneParam.pitch = pitch
@@ -633,7 +734,7 @@ class VirtualDroneController(
     private fun changeVirtualStickStatus(
         enable: Boolean,
         syncAdvancedParam: Boolean,
-        action: ((Boolean) -> Unit)?
+        action: ((Boolean) -> Unit)?,
     ) {
         if (enable) {
             VirtualStickManager.getInstance()

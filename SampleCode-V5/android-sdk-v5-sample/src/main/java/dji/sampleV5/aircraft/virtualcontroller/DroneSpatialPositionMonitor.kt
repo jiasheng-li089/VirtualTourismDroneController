@@ -22,7 +22,9 @@ interface IPositionMonitor {
 
     fun getZ(): Double
 
-    fun convertCoordinateToNED(bodyBasedVelocities: DoubleArray): DoubleArray
+    fun convertCoordinateToNED(selfDefinedCoordinateSystemVelocities: DoubleArray): DoubleArray
+
+    fun convertOrientationToNED(selfDefinedCoordinateSystemOrientation: Double): Double
 
     fun start()
 
@@ -117,6 +119,10 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         velocities[1] = - xyzVelocities[1] / cos(benchmarkOrientation) + xyzVelocities[0] / sin(benchmarkOrientation)
 
         return velocities
+    }
+
+    override fun convertOrientationToNED(selfDefinedCoordinateSystemOrientation: Double): Double {
+        return (this.benchmarkOrientation + selfDefinedCoordinateSystemOrientation) % 360 - 180
     }
 
     override fun start() {

@@ -5,7 +5,7 @@ import android.os.SystemClock
 import android.util.ArrayMap
 import android.util.Log
 import dji.sampleV5.aircraft.DJIApplication.Companion.idToString
-import dji.sampleV5.aircraft.MONITOR_VELOCITY_ACTIVELY
+import dji.sampleV5.aircraft.MONITOR_VELOCITY_AND_ORIENTATION_ACTIVELY
 import dji.sampleV5.aircraft.R
 import dji.sampleV5.aircraft.util.Util
 import dji.sampleV5.aircraft.utils.DroneStatusCallback
@@ -16,7 +16,6 @@ import dji.sdk.keyvalue.key.AirLinkKey
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
-import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
@@ -90,14 +89,20 @@ class DroneStatusMonitor(
         PerceptionManager.getInstance().addPerceptionInformationListener(this)
         PerceptionManager.getInstance().addObstacleDataListener(this)
 
-        if (MONITOR_VELOCITY_ACTIVELY) {
+        if (MONITOR_VELOCITY_AND_ORIENTATION_ACTIVELY) {
             readVelocityJob?.cancel()
 
             readVelocityJob = scope.launch(velocityScheduler) {
                 delay(10)
                 Timber.d("Current read velocity job is valid: ${null != readVelocityJob && true != readVelocityJob?.isCancelled}")
                 val velocityKey = FlightControllerKey.KeyAircraftVelocity.create()
+                val attitudeKey = FlightControllerKey.KeyAircraftAttitude.create()
                 while (null != readVelocityJob && true != readVelocityJob?.isCancelled) {
+                    // make the attitude to null to mark it invalid
+                    attitudeKey.get()?.let {
+                        Timber.log(LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY, "Attitude (R/P/Y): ${it.roll} / ${it.pitch} / ${it.yaw}")
+                        onChange(FlightControllerKey.KeyAircraftAttitude, it)
+                    }
                     // make the velocity around z axis as NaN to mark it invalid
                     velocityKey.get(Velocity3D(0.0, 0.0, Double.NaN))?.let {
                         Timber.log(
@@ -113,7 +118,7 @@ class DroneStatusMonitor(
     }
 
     fun stopMonitoring() {
-        if (MONITOR_VELOCITY_ACTIVELY) {
+        if (MONITOR_VELOCITY_AND_ORIENTATION_ACTIVELY) {
             readVelocityJob?.cancel()
             readVelocityJob = null
         }
@@ -314,8 +319,9 @@ class DroneStatusMonitor(
 //            }
 
         val keyList = droneStatusHandle.keys.toMutableList()
-        if (MONITOR_VELOCITY_ACTIVELY) {
+        if (MONITOR_VELOCITY_AND_ORIENTATION_ACTIVELY) {
             keyList.remove(FlightControllerKey.KeyAircraftVelocity)
+            keyList.remove(FlightControllerKey.KeyAircraftAttitude)
         }
         statusHelper = DroneStatusHelper(keyList, this)
     }
