@@ -139,6 +139,10 @@ class DroneStatusMonitor(
 
             notifyUpdate(mapOf(it.first to newValue))
         }
+        if (FlightControllerKey.KeyAircraftVelocity == key
+            || FlightControllerKey.KeyAircraftAttitude == key) {
+            return
+        }
         Timber.d("$key --> ${value?.toString() ?: "null"}")
     }
 

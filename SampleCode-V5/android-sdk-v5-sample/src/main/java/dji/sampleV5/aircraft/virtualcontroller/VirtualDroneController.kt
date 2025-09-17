@@ -76,7 +76,7 @@ private fun adjustDroneVelocityOneTime(
     } else {
         param.roll = roll
     }
-    if (null != pitch) {
+    if (null == pitch) {
         param.pitch = 0.0
     } else {
         param.pitch = pitch
