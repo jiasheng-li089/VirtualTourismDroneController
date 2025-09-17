@@ -104,7 +104,7 @@ class DroneStatusMonitor(
                         onChange(FlightControllerKey.KeyAircraftAttitude, it)
                     }
                     // make the velocity around z axis as NaN to mark it invalid
-                    velocityKey.get(Velocity3D(0.0, 0.0, Double.NaN))?.let {
+                    velocityKey.get()?.let {
                         Timber.log(
                             LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY,
                             "Velocity (N/E/D): ${it.x} / ${it.y} / ${it.z}"

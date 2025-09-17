@@ -52,20 +52,26 @@ open class DJIApplication : Application() {
         velocityLogTree = ExactLevelLoggingTree(velocityLogFile, LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY)
 
         Timber.plant(tree!!)
+        Timber.plant(velocityLogTree!!)
 
         Thread.setDefaultUncaughtExceptionHandler { thread, e->
             Timber.e(e)
-            tree?.destroy()
-            velocityLogTree?.destroy()
+            destroyLog()
         }
 
         currentControlScaleConfiguration = getControlStickScaleConfiguration(this)[0]
     }
 
-    override fun onTerminate() {
-        super.onTerminate()
+    private fun destroyLog() {
         tree?.destroy()
         velocityLogTree?.destroy()
+
+        Timber.uprootAll()
+    }
+
+    override fun onTerminate() {
+        super.onTerminate()
+        destroyLog()
     }
 
     companion object {

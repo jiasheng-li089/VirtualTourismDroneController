@@ -85,6 +85,7 @@ private fun adjustDroneVelocityOneTime(
         param.verticalControlMode = VerticalControlMode.VELOCITY
         param.verticalThrottle = 0.0
     } else {
+        param.verticalControlMode = VerticalControlMode.POSITION
         param.verticalThrottle = throttle
     }
 
