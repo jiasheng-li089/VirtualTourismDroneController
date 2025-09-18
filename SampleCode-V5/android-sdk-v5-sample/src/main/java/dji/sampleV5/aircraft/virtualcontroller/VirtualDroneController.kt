@@ -729,7 +729,7 @@ class VirtualDroneController(
         // pitch: the camera will rise (positive) or set (negative)
         // roll: the camera will rotate counterclockwise (positive) and clockwise (negative)
         // yaw: the camera will rotate towards left (positive) and right (negative)
-        param.yaw = angle
+        param.pitch = angle
         param.mode = GimbalAngleRotationMode.RELATIVE_ANGLE
         param.duration = 1.0
 
