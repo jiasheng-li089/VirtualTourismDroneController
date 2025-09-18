@@ -36,7 +36,7 @@
         android:usesCleartextTraffic="true"
         xmlns:tools="http://schemas.android.com/tools"
         tools:replace="android:usesCleartextTraffic"
-        android:theme="@style/Theme.AppCompat.DayNight">
+        android:theme="@style/Theme.MaterialComponents.DayNight">
 <!--        @android:style/Theme.NoTitleBar.Fullscreen
 Above is the theme it is using before but I changed it to fix an error
 that would cause my new activity to crash before because it wasnt using

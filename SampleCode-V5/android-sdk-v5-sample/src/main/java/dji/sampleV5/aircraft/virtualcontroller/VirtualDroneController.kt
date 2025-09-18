@@ -2,6 +2,7 @@ package dji.sampleV5.aircraft.virtualcontroller
 
 import android.os.SystemClock
 import android.util.Log
+import dji.sampleV5.aircraft.MAXIMUM_ROTATION_VELOCITY
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
 import dji.sampleV5.aircraft.currentControlScaleConfiguration
@@ -60,7 +61,7 @@ private fun adjustDroneVelocityOneTime(
     roll: Double? = null,
     pitch: Double? = null,
     yaw: Double? = null,
-    throttle: Double? = 0.0,
+    throttle: Double? = null,
 ) {
     val param = initDroneAdvancedParam()
     if (null == yaw) {
@@ -91,6 +92,17 @@ private fun adjustDroneVelocityOneTime(
 
     Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
     VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
+}
+
+/**
+ * calculate the shortest angle starts from the original angle to the target angle.
+ * positive means change in clockwise direction; negative means change in counterclockwise direction
+ *
+ * @param originAngle the original angle
+ * @param targetAngle the target angle
+ */
+private fun shortestAngleInSCS(originAngle: Double, targetAngle: Double): Double {
+    return -((targetAngle - originAngle + 540) % 360 - 180)
 }
 
 interface IControlStrategy {
@@ -196,41 +208,69 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
                 this.lastValidPosition = data.currentPosition.to2D()
             }
 
-            var targetRotationAngle: Double? = null
+            var targetOrientationInNED: Double? = null
             var rollSpeed: Double? = null
             var pitchSpeed: Double? = null
             var throttle: Double? = null
+            val timeGapInSeconds = if (this.lastSendCmdTimestamp == 0L)
+                data.sampleTimestamp - data.benchmarkSampleTimestamp * 1.0
+            else
+                (currentLocalTimestamp - this.lastSendCmdTimestamp) * 1000.0
 
+            // both these angles are relative orientation, range from 0 to 360
+            var targetAngleInSCS = data.getOrientationInSCS()
+            val currentAngleInSCS = it.getOrientationInSCS()
+
+            val shortestAngle = shortestAngleInSCS(currentAngleInSCS, targetAngleInSCS)
             // calculate the rotation angle changes, if it is huge enough, apply this changes to the drone
-            if (abs(data.currentRotation.y - this.lastValidRotation!!.y) >= 2.0) {
+            if (abs(shortestAngle) >= 1.0) {
+                // calculate if the difference between current angle and target one is too large
+                // check if go around the shortest path, it still exceed the maximum rotation velocity
+                val maximumAngleChange = MAXIMUM_ROTATION_VELOCITY * timeGapInSeconds
+                if (abs(shortestAngle) > maximumAngleChange) {
+                    targetAngleInSCS =
+                        currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
+                    targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
+                }
+
+                targetOrientationInNED =
+                    it.convertOrientationToNED(targetAngleInSCS)
+
                 Timber.d(
-                    "The change in the orientation is large enough to assign a target " +
-                            "orientation to the drone. old orientation: ${this.lastValidRotation!!.y}, new orientation: ${data.currentRotation.y}"
+                    buildString {
+                        append("Enough orientation to move. ")
+                        append("Old drone orientation: $currentAngleInSCS, ")
+                        append("Target drone orientation: $targetAngleInSCS, ")
+                        append("Headset benchmark orientation: ${data.benchmarkRotation.y}, ")
+                        append("Headset current orientation: ${data.currentRotation.y}, ")
+                        append("Target orientation in NED system: $targetOrientationInNED")
+                    }
                 )
-                targetRotationAngle =
-                    it.convertOrientationToNED(data.currentRotation.y.toDouble())
+
                 this.lastValidRotation = data.currentRotation
             }
 
             // calculate the height (position changes around z axis)
-            if (abs(data.currentPosition.z - lastPositionAroundZ) >= 0.1) {
-                Timber.d("The change in the Z axis is large enough to assign a target position to the drone. Old position: $lastPositionAroundZ, new position: ${data.currentPosition.z}")
-                throttle = data.currentPosition.z.toDouble()
-                this.lastPositionAroundZ = throttle
-            }
+            // TODO for debugging, get rid of the vertical position change first
+//            if (abs(data.currentPosition.z - lastPositionAroundZ) >= 0.1) {
+//                Timber.d("The change in the Z axis is large enough to assign a target position to the drone. Old position: $lastPositionAroundZ, new position: ${data.currentPosition.z}")
+//                throttle = data.currentPosition.z.toDouble()
+//                this.lastPositionAroundZ = throttle
+//            }
 
             // calculate the position changes around x and y axes
             if (abs(data.currentPosition.x - lastValidPosition!!.x) >= 0.1 || abs(data.currentPosition.y - lastValidPosition!!.y) >= 0.1) {
                 Timber.d("The changes in the X axis and Y axis are large enough to assign speeds in these two directions: Old position: (${lastValidPosition!!.x}, ${lastValidPosition!!.y}), new position: (${data.currentPosition.x}, ${data.currentPosition.y})")
-                val timeGapInSeconds = (currentLocalTimestamp - this.lastSendCmdTimestamp) * 1000L
-                var velocityAroundX = (data.currentPosition.x - lastValidPosition!!.x) / timeGapInSeconds
-                var velocityAroundY = (data.currentPosition.y - lastValidPosition!!.y) / timeGapInSeconds
+                var velocityAroundX =
+                    (data.currentPosition.x - lastValidPosition!!.x) / timeGapInSeconds
+                var velocityAroundY =
+                    (data.currentPosition.y - lastValidPosition!!.y) / timeGapInSeconds
 
                 // TODO convert the velocities around x and y to the ones around north and east
             }
 
-            if (null != targetRotationAngle || null != rollSpeed || null != pitchSpeed || null != throttle) {
-                adjustDroneVelocityOneTime(rollSpeed, pitchSpeed, targetRotationAngle, throttle)
+            if (null != targetOrientationInNED || null != rollSpeed || null != pitchSpeed || null != throttle) {
+                adjustDroneVelocityOneTime(rollSpeed, pitchSpeed, targetOrientationInNED, throttle)
             }
 
             this.lastValidSampleTime = data.sampleTimestamp
@@ -266,8 +306,8 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 //            adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
 //
 //            // update last valid sample time
-//            this.lastValidSampleTime = data.sampleTimestamp
-//            this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
+            this.lastValidSampleTime = data.sampleTimestamp
+            this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
         }
     }
 
@@ -473,7 +513,7 @@ class VirtualDroneController(
             }
         } else {
             super.switchDroneStatus(false)
-            adjustDroneVelocityOneTime(0.0, 0.0, 0.0)
+            adjustDroneVelocityOneTime(0.0, 0.0, null)
             changeVirtualStickStatus(enable = false, syncAdvancedParam = true, null)
             positionMonitor?.stop()
             positionMonitor = null

@@ -226,7 +226,7 @@
     </style>
 
     <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
         <!-- Customize your theme here. -->
         <item name="android:windowBackground">@color/uxsdk_background_blue</item>
         <item name="colorPrimary">@color/uxsdk_colorPrimary</item>

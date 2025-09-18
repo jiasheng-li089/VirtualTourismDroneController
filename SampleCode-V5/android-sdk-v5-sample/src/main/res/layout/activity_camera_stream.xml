@@ -54,6 +54,8 @@
         android:layout_gravity="bottom"
         android:gravity="center"
         android:orientation="horizontal"
+        android:showDividers="middle"
+        android:divider="@drawable/vertical_divider"
         android:paddingVertical="@dimen/uxsdk_10_dp">
 
         <Button
@@ -106,6 +108,17 @@
         android:layout_gravity="top|center"
         android:popupBackground="@color/black"
         android:layout_marginTop="@dimen/uxsdk_30_dp"
+        android:layout_height="wrap_content"/>
+
+    <com.google.android.material.slider.Slider
+        android:id="@+id/rotation_maximum_velocity_slider"
+        android:layout_width="@dimen/uxsdk_300_dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="@dimen/uxsdk_60_dp"
+        android:valueFrom="5"
+        android:valueTo="100"
+        android:value="20"
+        android:stepSize="1"
         android:layout_height="wrap_content"/>
 
     <androidx.constraintlayout.widget.ConstraintLayout

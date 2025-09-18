@@ -307,8 +307,13 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
             override fun onNothingSelected(parent: AdapterView<*>?) {
             }
-
         }
+
+        binding.rotationMaximumVelocitySlider.value = MAXIMUM_ROTATION_VELOCITY.toFloat()
+        binding.rotationMaximumVelocitySlider.addOnChangeListener { slider, value, fromUser ->
+            MAXIMUM_ROTATION_VELOCITY = value.toDouble()
+        }
+
         viewModel.remoteControlUIStatus.observe(this) {
             binding.spinnerControlMode.isEnabled = it
             binding.spinnerControlScaleConfiguration.isEnabled = it

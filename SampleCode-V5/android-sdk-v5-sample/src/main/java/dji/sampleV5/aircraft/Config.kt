@@ -27,6 +27,7 @@ const val COMPASS_OFFSET = 0.toDouble()
 // the movement of the headset will be apply to the drone after applying this scale
 const val HEADSET_MOVEMENT_SCALE = 0.5f
 
+
 // current configuration of the thumb stick control scale factors
 lateinit var currentControlScaleConfiguration: ControlStickScaleConfiguration
 
@@ -55,3 +56,6 @@ data class ScaleFactor(
 data class ControlStickScaleConfiguration(
     var name: String, var description: String, var scale: ScaleFactor
 )
+
+// the maximum rotation velocity, in degree
+var MAXIMUM_ROTATION_VELOCITY = 50.0

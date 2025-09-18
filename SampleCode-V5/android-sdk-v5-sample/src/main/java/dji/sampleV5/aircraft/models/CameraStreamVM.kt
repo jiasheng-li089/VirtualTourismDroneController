@@ -23,6 +23,7 @@ import dji.sampleV5.aircraft.virtualcontroller.DroneStatusMonitor
 import dji.sampleV5.aircraft.virtualcontroller.IDroneController
 import dji.sampleV5.aircraft.virtualcontroller.MockDroneController
 import dji.sampleV5.aircraft.virtualcontroller.VirtualDroneController
+import dji.sampleV5.aircraft.virtualcontroller.normalizeToSCS
 import dji.sampleV5.aircraft.webrtc.ConnectionInfo
 import dji.sampleV5.aircraft.webrtc.DATA_RECEIVER
 import dji.sampleV5.aircraft.webrtc.DJIVideoCapturer
@@ -109,8 +110,13 @@ data class ControlStatusData(
     var leftThumbStickValue: Vector2D,
     var rightThumbStickValue: Vector2D,
 
-    var sampleTimestamp: Long
-)
+    var sampleTimestamp: Long,
+    var benchmarkSampleTimestamp: Long
+) {
+    fun getOrientationInSCS(): Double {
+        return (currentRotation.y.toDouble() - benchmarkRotation.y.toDouble()).normalizeToSCS()
+    }
+}
 
 class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListener {
 

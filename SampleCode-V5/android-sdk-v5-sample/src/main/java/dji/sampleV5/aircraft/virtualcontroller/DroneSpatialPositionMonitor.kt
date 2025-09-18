@@ -22,9 +22,14 @@ interface IPositionMonitor {
 
     fun getZ(): Double
 
-    fun convertCoordinateToNED(selfDefinedCoordinateSystemVelocities: DoubleArray): DoubleArray
+    /**
+     * Returns drone's current orientation in self-maintained coordinate system (SCS), ranges from 0 - 360
+     */
+    fun getOrientationInSCS(): Double
 
-    fun convertOrientationToNED(selfDefinedCoordinateSystemOrientation: Double): Double
+    fun convertCoordinateToNED(velocitiesInSCS: DoubleArray): DoubleArray
+
+    fun convertOrientationToNED(orientationInSCS: Double): Double
 
     fun start()
 
@@ -39,8 +44,11 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
 
     private var z: Double = 0.0
 
-    // range from 0 to 360, initially set to a value out of this range to mark as uninitialized.
-    // while it equals to 180, the x axis is same as the north direction in NED coordinate system
+    // benchmark orientation, ranges from -180 to 180,
+    // 0 means the drone is toward North,
+    // 90 means the drone is toward East,
+    // -90 means the drone is toward West
+    // 180 and -180 means the drone is toward South
     private var benchmarkOrientation: Double = Double.NaN
 
     private var currentOrientation: Double = Double.NaN
@@ -99,11 +107,11 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
     private fun updateAttitude(attitude: Attitude) {
         // using the yaw/Z axis as the attitude
         if (this.benchmarkOrientation.isNaN()) {
-            // the range of yaw is from -180 to 180, convert it to new one from 0 to 360,
-            this.benchmarkOrientation = attitude.yaw + 180 + COMPASS_OFFSET
+            // the range of yaw is from -180 to 180
+            this.benchmarkOrientation = attitude.yaw + COMPASS_OFFSET
             lastPositionUpdateTime = SystemClock.elapsedRealtime()
         }
-        currentOrientation = attitude.yaw + 180 + COMPASS_OFFSET
+        currentOrientation = attitude.yaw + COMPASS_OFFSET
 
         statusUpdater?.invoke("Drone Position (X/Y/Z)", "$x / $y / $z")
         Timber.d("Update drone virtual position (X/Y/Z): $x / $y / $z")
@@ -121,8 +129,19 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         return velocities
     }
 
-    override fun convertOrientationToNED(selfDefinedCoordinateSystemOrientation: Double): Double {
-        return (this.benchmarkOrientation + selfDefinedCoordinateSystemOrientation) % 360 - 180
+    override fun convertOrientationToNED(orientationInSCS: Double): Double {
+        val result = this.benchmarkOrientation + (orientationInSCS % 360)
+
+        // calibrate the orientation to range (-180, 180)
+        return if (result >= -180 && result <= 180) {
+            result
+        } else if (result > 180) {
+            // -180 + (result - 180)
+            result - 360
+        } else { // < -180
+            // 180 - (-180 - result)
+            360 - result
+        }
     }
 
     override fun start() {
@@ -152,6 +171,21 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
     override fun getY() = y
 
     override fun getZ() = z
+
+    override fun getOrientationInSCS(): Double {
+        // INFO both currentOrientation and benchmarkOrientation range from -180 to 180
+        // so the result should range from -360 to 360
+        return (currentOrientation - benchmarkOrientation).normalizeToSCS()
+    }
+}
+
+
+fun Double.normalizeToSCS(): Double {
+    return if (this >= 0) {
+        this % 360
+    } else {
+        360.0 + this
+    }
 }
 
 class DroneSpatialPositionMonitorWithEFence(
