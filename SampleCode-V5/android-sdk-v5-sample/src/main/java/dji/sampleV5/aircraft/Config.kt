@@ -15,7 +15,6 @@ const val USE_MOCK_CONTROL = false
 // the interval between sending two 'Ping' packet to test the data latency
 const val PING_INTERVAL = 1000L
 
-
 // the frequency of sending control command to the drone via the VirtualStick's advanced parameters
 // maximum recommended frequency is 25 Hz
 const val SENDING_FREQUENCY = 5

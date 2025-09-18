@@ -98,6 +98,25 @@ private fun adjustDroneVelocityOneTime(
 }
 
 /**
+ * adjust the angle of the gimbal; positive means rise the camera; negative means set the camera
+ */
+private fun adjustCameraOrientation(angle: Double) {
+    val param = GimbalAngleRotation()
+    // pitch: the camera will rise (positive) or set (negative)
+    // roll: the camera will rotate counterclockwise (positive) and clockwise (negative)
+    // yaw: the camera will rotate towards left (positive) and right (negative)
+    param.pitch = angle
+    param.mode = GimbalAngleRotationMode.ABSOLUTE_ANGLE
+    param.duration = 1.0
+
+    KeyTools.createKey(GimbalKey.KeyRotateByAngle).action(param, { result ->
+        Timber.d("Rotate the gimbal successfully: $angle")
+    }, { error->
+        Timber.e("Failed to rotate the gimbal (${error.errorCode()}): ${error.hint()}")
+    })
+}
+
+/**
  * calculate the shortest angle starts from the original angle to the target angle.
  * positive means change in clockwise direction; negative means change in counterclockwise direction
  *
@@ -274,6 +293,24 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 
             if (null != targetOrientationInNED || null != rollSpeed || null != pitchSpeed || null != throttle) {
                 adjustDroneVelocityOneTime(rollSpeed, pitchSpeed, targetOrientationInNED, throttle)
+            }
+
+            // update gimbal angle, don't care about update in last time, only synchronize user's attitude to the gimbal
+            // range from 0 to 360,
+            // the value increases from 0 when user sets his head;
+            // the value decreases from 360 when user rises this head
+            // valid value range [0, 90] and [270, 360)
+            val currentAngle = data.currentRotation.x
+            val targetAngle =
+            if (currentAngle >= 0 && currentAngle <= 90) {
+                - currentAngle
+            } else if (currentAngle >= 270 && currentAngle < 360) {
+                360 - currentAngle
+            } else {
+                null
+            }
+            targetAngle?.let {
+                adjustCameraOrientation(it.toDouble())
             }
 
             this.lastValidSampleTime = data.sampleTimestamp
@@ -468,6 +505,7 @@ class VirtualDroneController(
         setObstacleAvoidanceWarningDistance(0.1)
         setObstacleAvoidance(false, null)
 
+        // set maximum height the drone can fly
         KeyTools.createKey(FlightControllerKey.KeyHeightLimit).set(2, {
             messageNotifier?.invoke(Log.DEBUG, "Set the maximum height of drone successfully", null)
         }, {
@@ -725,19 +763,7 @@ class VirtualDroneController(
     }
 
     override fun riseAndSetGimbal(angle: Double) {
-        val param = GimbalAngleRotation()
-        // pitch: the camera will rise (positive) or set (negative)
-        // roll: the camera will rotate counterclockwise (positive) and clockwise (negative)
-        // yaw: the camera will rotate towards left (positive) and right (negative)
-        param.pitch = angle
-        param.mode = GimbalAngleRotationMode.RELATIVE_ANGLE
-        param.duration = 1.0
 
-        KeyTools.createKey(GimbalKey.KeyRotateByAngle).action(param, { result ->
-            messageNotifier?.invoke(Log.INFO, "Rotate the gimbal successfully", null)
-        }, { error->
-            messageNotifier?.invoke(Log.ERROR, "Failed to rotate the gimbal", null)
-        })
     }
 
     private fun setObstacleAvoidanceWarningDistance(distance: Double) {

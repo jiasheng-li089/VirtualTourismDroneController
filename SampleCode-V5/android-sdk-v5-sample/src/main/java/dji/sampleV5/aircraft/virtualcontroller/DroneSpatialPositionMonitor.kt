@@ -5,6 +5,7 @@ import android.os.SystemClock
 import dji.sampleV5.aircraft.COMPASS_OFFSET
 import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.Velocity3D
 import timber.log.Timber
@@ -57,9 +58,13 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
 
     private val velocityKey = FlightControllerKey.KeyAircraftVelocity
 
+    private val gimbalAttitudeKey = GimbalKey.KeyGimbalAttitude
+
     private var lastPositionUpdateTime = 0L
 
     private var lastVelocities: Velocity3D = Velocity3D(0.0, 0.0, 0.0)
+
+    private var currentGimbalAttitude: Attitude? = null
 
     private fun resetStatusValues() {
         x = 0.0
@@ -117,6 +122,10 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         Timber.d("Update drone virtual position (X/Y/Z): $x / $y / $z")
     }
 
+    private fun updateGimbalAttitude(attitude: Attitude) {
+        this.currentGimbalAttitude = attitude
+    }
+
     override fun convertCoordinateToNED(xyzVelocities: DoubleArray): DoubleArray {
         val velocities = xyzVelocities.copyOf(xyzVelocities.size)
 
@@ -149,11 +158,13 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
 
         observable.register(attitudeKey, this)
         observable.register(velocityKey, this)
+        observable.register(gimbalAttitudeKey, this)
     }
 
     override fun stop() {
         observable.unregister(attitudeKey, this)
         observable.unregister(velocityKey, this)
+        observable.unregister(gimbalAttitudeKey, this)
     }
 
     override fun invoke(p1: DJIKeyInfo<*>, p2: Any?) {
@@ -163,6 +174,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
             }
         } else if (p1.innerIdentifier.equals(attitudeKey.innerIdentifier)) {
             (p2 as? Attitude)?.let { updateAttitude(it) }
+        } else if (p1.innerIdentifier.equals(gimbalAttitudeKey.innerIdentifier)) {
+            (p2 as? Attitude)?.let { updateGimbalAttitude(it) }
         }
     }
 
