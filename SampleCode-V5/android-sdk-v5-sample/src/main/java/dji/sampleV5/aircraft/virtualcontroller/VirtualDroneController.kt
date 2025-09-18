@@ -12,6 +12,7 @@ import dji.sampleV5.aircraft.models.Vector2D
 import dji.sampleV5.aircraft.models.Vector3D
 import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
@@ -20,6 +21,8 @@ import dji.sdk.keyvalue.value.flightcontroller.RollPitchControlMode
 import dji.sdk.keyvalue.value.flightcontroller.VerticalControlMode
 import dji.sdk.keyvalue.value.flightcontroller.VirtualStickFlightControlParam
 import dji.sdk.keyvalue.value.flightcontroller.YawControlMode
+import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotation
+import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotationMode
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.et.action
@@ -340,6 +343,8 @@ interface IDroneController {
         period: Long = 1000,
     )
 
+    fun riseAndSetGimbal(angle: Double)
+
     fun changeDroneVelocityBaseOnGround(
         northAndSouth: Double = 0.0,
         eastAndWest: Double = 0.0,
@@ -432,6 +437,8 @@ class MockDroneController(
     override fun destroy() {
     }
 
+    override fun riseAndSetGimbal(angle: Double) {
+    }
 }
 
 class VirtualDroneController(
@@ -717,6 +724,21 @@ class VirtualDroneController(
         }
     }
 
+    override fun riseAndSetGimbal(angle: Double) {
+        val param = GimbalAngleRotation()
+        // pitch: the camera will rise (positive) or set (negative)
+        // roll: the camera will rotate counterclockwise (positive) and clockwise (negative)
+        // yaw: the camera will rotate towards left (positive) and right (negative)
+        param.yaw = angle
+        param.mode = GimbalAngleRotationMode.RELATIVE_ANGLE
+        param.duration = 1.0
+
+        KeyTools.createKey(GimbalKey.KeyRotateByAngle).action(param, { result ->
+            messageNotifier?.invoke(Log.INFO, "Rotate the gimbal successfully", null)
+        }, { error->
+            messageNotifier?.invoke(Log.ERROR, "Failed to rotate the gimbal", null)
+        })
+    }
 
     private fun setObstacleAvoidanceWarningDistance(distance: Double) {
         listOf(

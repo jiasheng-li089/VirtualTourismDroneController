@@ -302,9 +302,9 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
     fun flightToDirection(direction: Int) {
         // comment this check for debugging
-        if (droneController?.isDroneReady() != true) {
-            return
-        }
+//        if (droneController?.isDroneReady() != true) {
+//            return
+//        }
         val velocity = 0.25
         when (direction) {
             R.id.btn_forward -> { // forward // North
@@ -336,7 +336,14 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                 showMessageOnLogAndScreen(Log.DEBUG, "Press rotate to right")
                 droneController?.changeDroneVelocity(rotateRightLeft = 10.0)
             }
-
+            R.id.btn_rise_gimbal -> {
+                showMessageOnLogAndScreen(Log.DEBUG, "Rise the gimbal")
+                droneController?.riseAndSetGimbal(10.0)
+            }
+            R.id.btn_set_gimbal -> {
+                showMessageOnLogAndScreen(Log.DEBUG, "Set the gimbal")
+                droneController?.riseAndSetGimbal(-10.0)
+            }
             else -> {
                 // reset
                 showMessageOnLogAndScreen(Log.DEBUG, "Press reset")

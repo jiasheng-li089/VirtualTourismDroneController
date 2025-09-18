@@ -209,7 +209,9 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
             binding.btnRight,
             binding.btnReset,
             binding.btnRotateLeft,
-            binding.btnRotateRight
+            binding.btnRotateRight,
+            binding.btnRiseGimbal,
+            binding.btnSetGimbal
         ).forEach { btn ->
             btn.setOnClickListener { view->
                 viewModel.flightToDirection(btn.id)

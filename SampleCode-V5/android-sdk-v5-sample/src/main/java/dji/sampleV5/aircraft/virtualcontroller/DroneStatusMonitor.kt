@@ -16,6 +16,7 @@ import dji.sdk.keyvalue.key.AirLinkKey
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
@@ -310,10 +311,20 @@ class DroneStatusMonitor(
             R.string.hint_flight_mode.idToString() to {
                 (it as? FlightMode)?.name ?: "N/A"
             }
+
+        // remote controller flight mode
         droneStatusHandle[FlightControllerKey.KeyRemoteControllerFlightMode] =
             R.string.hint_remote_controller_flight_mode.idToString() to {
                 (it as? RemoteControllerFlightMode)?.name ?: "N/A"
             }
+        // gimbal attitude
+        droneStatusHandle[GimbalKey.KeyGimbalAttitude] =
+            R.string.hint_gimbal_attitude.idToString() to {
+                (it as? Attitude)?.let { attitude ->
+                    "%.2f / %.2f / %.2f".format(attitude.yaw, attitude.roll, attitude.pitch)
+                } ?: "N/A"
+            }
+
 
         // INFO taking off altitude, unreliable status, should not be used for any use cases
         // returns a negative value, which is considered as an invalid value while placing the drone on the ground.
