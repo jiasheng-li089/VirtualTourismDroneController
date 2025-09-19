@@ -237,7 +237,7 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
             val timeGapInSeconds = if (this.lastSendCmdTimestamp == 0L)
                 data.sampleTimestamp - data.benchmarkSampleTimestamp * 1.0
             else
-                (currentLocalTimestamp - this.lastSendCmdTimestamp) * 1000.0
+                (currentLocalTimestamp - this.lastSendCmdTimestamp) / 1000.0
 
             // both these angles are relative orientation, range from 0 to 360
             var targetAngleInSCS = data.getOrientationInSCS()
