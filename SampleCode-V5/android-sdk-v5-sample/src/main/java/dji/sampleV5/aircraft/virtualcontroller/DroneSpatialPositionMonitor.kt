@@ -28,6 +28,8 @@ interface IPositionMonitor {
      */
     fun getOrientationInSCS(): Double
 
+    fun getOrientationBenchmark(): Double
+
     fun convertCoordinateToNED(velocitiesInSCS: DoubleArray): DoubleArray
 
     fun convertOrientationToNED(orientationInSCS: Double): Double
@@ -190,6 +192,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         // so the result should range from -360 to 360
         return (currentOrientation - benchmarkOrientation).normalizeToSCS()
     }
+
+    override fun getOrientationBenchmark() = benchmarkOrientation
 }
 
 

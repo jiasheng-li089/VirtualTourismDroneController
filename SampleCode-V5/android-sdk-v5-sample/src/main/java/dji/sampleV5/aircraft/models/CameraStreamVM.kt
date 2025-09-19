@@ -173,11 +173,16 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
         initializeEventHandles()
 
+        var isDroneReady = false
         statusMonitor = DroneStatusMonitor(viewModelScope, this::showMessageOnLogAndScreen) {
             emitMonitorStatus(it)
 
             droneController?.let { controller ->
-                Timber.d("If the drone is ready: ${controller.isDroneReady()}")
+                if (controller.isDroneReady() != isDroneReady) {
+                    // log only when value changes
+                    Timber.d("If the drone is ready: ${controller.isDroneReady()}")
+                    isDroneReady = controller.isDroneReady()
+                }
                 emitMonitorStatus(
                     mapOf(
                         R.string.hint_remote_control.idToString() to if (controller.isDroneReady()) {

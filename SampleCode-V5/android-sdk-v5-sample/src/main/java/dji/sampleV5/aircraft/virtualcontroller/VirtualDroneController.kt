@@ -249,6 +249,15 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
                 // calculate if the difference between current angle and target one is too large
                 // check if go around the shortest path, it still exceed the maximum rotation velocity
                 val maximumAngleChange = MAXIMUM_ROTATION_VELOCITY * timeGapInSeconds
+                // only log when changes need to be applied
+                Timber.d(
+                    buildString {
+                        append("Drone current orientation: $currentAngleInSCS, ")
+                        append("Headset current orientation: $targetAngleInSCS, ")
+                        append("Shortest angle is: $shortestAngle, ")
+                        append("Maximum angle change: $maximumAngleChange")
+                    }
+                )
                 if (abs(shortestAngle) > maximumAngleChange) {
                     targetAngleInSCS =
                         currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
@@ -261,10 +270,10 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
                 Timber.d(
                     buildString {
                         append("Enough orientation to move. ")
-                        append("Old drone orientation: $currentAngleInSCS, ")
-                        append("Target drone orientation: $targetAngleInSCS, ")
+                        append("Calculated target drone orientation: $targetAngleInSCS, ")
                         append("Headset benchmark orientation: ${data.benchmarkRotation.y}, ")
                         append("Headset current orientation: ${data.currentRotation.y}, ")
+                        append("Drone benchmark: ${positionMonitor!!.getOrientationBenchmark()}")
                         append("Target orientation in NED system: $targetOrientationInNED")
                     }
                 )
