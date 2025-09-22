@@ -5,6 +5,5 @@ files=$(adb shell ls /sdcard/Android/data/org.otago.hci.vrbasedtourism/files/LOG
 for file in $files;
 do
     adb pull $file ./logs/
+    adb shell rm -f $file
 done
-
-adb shell rm -f /sdcard/Android/data/org.otago.hci.vrbasedtourism/files/LOG/\*.log
