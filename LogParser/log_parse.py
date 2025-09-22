@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 
+from cProfile import label
 import sys
 import re
+from turtle import color
 import matplotlib
 import matplotlib.pyplot as plt
-import time
 
 
 matplotlib.use("QtAgg")
@@ -38,7 +39,9 @@ def plot_drone_attitude_changes(file_path: str):
 
     drone_attitudes = []
     target_attitude = []
+    headset_attitudes = []
     current_drone_attitude = None
+    current_headset_attitude = None
     
     timestamp_regex = r'^(?P<time>.*?\s.*?)\s'
 
@@ -53,14 +56,15 @@ def plot_drone_attitude_changes(file_path: str):
     drone_attitudes_regex = r'^.*Drone\s*?current\s*?orientation:(?P<drone_attitude>.*?),\s*?Headset\s*?current\s*?orientation:(?P<headset_attitude>.*?),\s*?Shortest\s*?angle\s*?is:(?P<shortest_angle>.*?),\s*?Maximum\s*?angle\s*?change:(?P<change>.*)$'
 
     # 2025-09-22 16:12:51.510	D	CameraStreamVM$onReceivedData		onControllerStatusData: {"benchmarkPosition":{"x":-3.8348565,"y":1.7451186,"z":0.5193311},"benchmarkRotation":{"x":357.01654,"y":54.776726,"z":0.12363679},"benchmarkSampleTimestamp":1758514371304,"currentPosition":{"x":-3.8348565,"y":1.7451186,"z":0.5193311},"currentRotation":{"x":357.01654,"y":54.776726,"z":0.12363679},"lastPosition":{"x":-3.8348565,"y":1.7451186,"z":0.5193311},"lastRotation":{"x":357.01654,"y":54.776726,"z":0.12363679},"leftThumbStickValue":{"x":0.0,"y":0.0},"rightThumbStickValue":{"x":0.0,"y":0.0},"sampleTimestamp":1758514371306}
-    headset_orientation_regex = r'^.*'
+    headset_orientation_regex = r'^.*CameraStreamVM\$onReceivedData.*onControllerStatusData.*benchmarkRotation.*"y":(?P<headset_b_attitude>.*?),.*currentRotation.*?"y":(?P<headset_c_attitude>.*?),'
 
     def filter_out_drone_attitude_changes(line: str):
         result = re.search(attitude_regex, line)
         nonlocal current_drone_attitude
+        nonlocal current_headset_attitude
         if result:
             print(line)
-            current_drone_attitude = abs(int(float(result["attitude"])))
+            current_drone_attitude = int(float(result["attitude"]))
         else:
             result = re.search(sent_target_orientation_regex, line)
             if result:
@@ -69,7 +73,15 @@ def plot_drone_attitude_changes(file_path: str):
                 if current_drone_attitude is not None:
                     drone_attitudes.append(current_drone_attitude)
                     current_drone_attitude = None
-                
+                if current_headset_attitude is not None:
+                    headset_attitudes.append(current_headset_attitude)
+                    current_headset_attitude = None
+            else:
+                result = re.search(headset_orientation_regex, line)
+                if result:
+                    headset_b_attitude = float(result['headset_b_attitude'])
+                    headset_c_attitude = float(result['headset_c_attitude'])
+                    current_headset_attitude = int((headset_c_attitude - headset_b_attitude) + 360) % 360 - 180
 
     read_file_line_by_line(file_path, filter_out_drone_attitude_changes)
 
@@ -78,14 +90,23 @@ def plot_drone_attitude_changes(file_path: str):
     plt.ylabel("Attitude")
     plt.plot(
         [x + 1 for x in range(len(drone_attitudes))],
-        [x for x in drone_attitudes],
-        color='red'
+        [abs(x) for x in drone_attitudes],
+        color='red',
+        label="Drone Attitude"
     )
     plt.plot(
         [x + 1 for x in range(len(target_attitude))],
-        [x for x in target_attitude],
-        color='orange'
+        [abs(x) for x in target_attitude],
+        color='orange',
+        label="Sent Attitude"
     )
+    plt.plot(
+        [x + 1 for x in range(len(headset_attitudes))],
+        [abs(x) for x in headset_attitudes],
+        color='green',
+        label="Headset Attitude"
+    )
+    plt.legend()
     plt.tight_layout()
     plt.show()
 
