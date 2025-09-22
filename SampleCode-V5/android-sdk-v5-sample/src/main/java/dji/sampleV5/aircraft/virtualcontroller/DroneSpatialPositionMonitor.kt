@@ -77,6 +77,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         currentOrientation = Double.NaN
     }
 
+    private fun Double.NED2CSC() = (this + 180).normalizeToSCS()
+
     private fun updateVelocities(velocities: Velocity3D) {
         if (0L == lastPositionUpdateTime) return
 
@@ -141,7 +143,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
     }
 
     override fun convertOrientationToNED(orientationInSCS: Double): Double {
-        val result = this.benchmarkOrientation + (orientationInSCS % 360)
+        // calculate the absolute orientation without benchmark
+        val result = (orientationInSCS + benchmarkOrientation).normalizeToSCS()
 
         // calibrate the orientation to range (-180, 180)
         return if (result >= -180 && result <= 180) {

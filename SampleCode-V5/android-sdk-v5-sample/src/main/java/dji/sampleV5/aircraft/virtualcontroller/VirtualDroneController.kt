@@ -258,11 +258,11 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
                         append("Maximum angle change: $maximumAngleChange")
                     }
                 )
-                if (abs(shortestAngle) > maximumAngleChange) {
-                    targetAngleInSCS =
-                        currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
-                    targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
-                }
+//                if (abs(shortestAngle) > maximumAngleChange) {
+//                    targetAngleInSCS =
+//                        currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
+//                    targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
+//                }
 
                 targetOrientationInNED =
                     it.convertOrientationToNED(targetAngleInSCS)
