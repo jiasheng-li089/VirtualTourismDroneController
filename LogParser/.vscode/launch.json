@@ -8,9 +8,11 @@
             "name": "Main",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": "${command:pickArgs}"
+            "program": "${workspaceFolder}/log_parse.py",
+            "console": "internalConsole",
+            "args": [
+                "22_16_05"
+            ]
         }
     ]
 }
