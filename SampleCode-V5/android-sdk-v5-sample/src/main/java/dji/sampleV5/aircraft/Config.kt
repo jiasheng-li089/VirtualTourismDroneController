@@ -17,7 +17,7 @@ const val PING_INTERVAL = 1000L
 
 // the frequency of sending control command to the drone via the VirtualStick's advanced parameters
 // maximum recommended frequency is 25 Hz
-const val SENDING_FREQUENCY = 5
+const val SENDING_FREQUENCY = 25
 
 
 // the orientation data returned from drone is not accurate, need to be calibrated.
@@ -57,4 +57,4 @@ data class ControlStickScaleConfiguration(
 )
 
 // the maximum rotation velocity, in degree
-var MAXIMUM_ROTATION_VELOCITY = 50.0
+var MAXIMUM_ROTATION_VELOCITY = 0.0

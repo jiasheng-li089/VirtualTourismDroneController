@@ -124,7 +124,7 @@ private fun adjustCameraOrientation(angle: Double) {
  * @param targetAngle the target angle
  */
 private fun shortestAngleInSCS(originAngle: Double, targetAngle: Double): Double {
-    return -((targetAngle - originAngle + 540) % 360 - 180)
+    return ((targetAngle - originAngle + 540) % 360 - 180)
 }
 
 interface IControlStrategy {
@@ -245,7 +245,7 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 
             val shortestAngle = shortestAngleInSCS(currentAngleInSCS, targetAngleInSCS)
             // calculate the rotation angle changes, if it is huge enough, apply this changes to the drone
-            if (abs(shortestAngle) >= 1.0) {
+//            if (abs(shortestAngle) >= 1.0) {
                 // calculate if the difference between current angle and target one is too large
                 // check if go around the shortest path, it still exceed the maximum rotation velocity
                 val maximumAngleChange = MAXIMUM_ROTATION_VELOCITY * timeGapInSeconds
@@ -258,11 +258,14 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
                         append("Maximum angle change: $maximumAngleChange")
                     }
                 )
-//                if (abs(shortestAngle) > maximumAngleChange) {
-//                    targetAngleInSCS =
-//                        currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
-//                    targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
-//                }
+                if (maximumAngleChange > 0 && abs(shortestAngle) > maximumAngleChange) {
+                    Timber.d(buildString {
+                        append("The expected target drone orientation: ${it.convertOrientationToNED(targetAngleInSCS)}")
+                    })
+                    targetAngleInSCS =
+                        currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
+                    targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
+                }
 
                 targetOrientationInNED =
                     it.convertOrientationToNED(targetAngleInSCS)
@@ -279,7 +282,7 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
                 )
 
                 this.lastValidRotation = data.currentRotation
-            }
+//            }
 
             // calculate the height (position changes around z axis)
             // TODO for debugging, get rid of the vertical position change first
