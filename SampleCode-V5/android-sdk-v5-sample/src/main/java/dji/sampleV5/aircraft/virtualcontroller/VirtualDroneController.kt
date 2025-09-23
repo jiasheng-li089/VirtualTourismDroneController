@@ -244,45 +244,50 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
             val currentAngleInSCS = it.getOrientationInSCS()
 
             val shortestAngle = shortestAngleInSCS(currentAngleInSCS, targetAngleInSCS)
-            // calculate the rotation angle changes, if it is huge enough, apply this changes to the drone
-//            if (abs(shortestAngle) >= 1.0) {
-                // calculate if the difference between current angle and target one is too large
-                // check if go around the shortest path, it still exceed the maximum rotation velocity
-                val maximumAngleChange = MAXIMUM_ROTATION_VELOCITY * timeGapInSeconds
-                // only log when changes need to be applied
-                Timber.d(
-                    buildString {
-                        append("Drone current orientation: $currentAngleInSCS, ")
-                        append("Headset current orientation: $targetAngleInSCS, ")
-                        append("Shortest angle is: $shortestAngle, ")
-                        append("Maximum angle change: $maximumAngleChange")
-                    }
-                )
-                if (maximumAngleChange > 0 && abs(shortestAngle) > maximumAngleChange) {
-                    Timber.d(buildString {
-                        append("The expected target drone orientation: ${it.convertOrientationToNED(targetAngleInSCS)}")
-                    })
-                    targetAngleInSCS =
-                        currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
-                    targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
+            // calculate if the difference between current angle and target one is too large
+            // check if go around the shortest path, it still exceed the maximum rotation velocity
+
+            // TODO remove the maximum speed limitation, the rotation data has been smoothed on the headset side
+            val maximumAngleChange = MAXIMUM_ROTATION_VELOCITY * timeGapInSeconds
+            // only log when changes need to be applied
+            Timber.d(
+                buildString {
+                    append("Drone current orientation: $currentAngleInSCS, ")
+                    append("Headset current orientation: $targetAngleInSCS, ")
+                    append("Shortest angle is: $shortestAngle, ")
+                    append("Maximum angle change: $maximumAngleChange")
                 }
-
-                targetOrientationInNED =
-                    it.convertOrientationToNED(targetAngleInSCS)
-
-                Timber.d(
-                    buildString {
-                        append("Enough orientation to move. ")
-                        append("Calculated target drone orientation: $targetAngleInSCS, ")
-                        append("Headset benchmark orientation: ${data.benchmarkRotation.y}, ")
-                        append("Headset current orientation: ${data.currentRotation.y}, ")
-                        append("Drone benchmark: ${positionMonitor!!.getOrientationBenchmark()}")
-                        append("Target orientation in NED system: $targetOrientationInNED")
-                    }
-                )
-
-                this.lastValidRotation = data.currentRotation
+            )
+//            if (maximumAngleChange > 0 && abs(shortestAngle) > maximumAngleChange) {
+//                Timber.d(buildString {
+//                    append(
+//                        "The expected target drone orientation: ${
+//                            it.convertOrientationToNED(
+//                                targetAngleInSCS
+//                            )
+//                        }"
+//                    )
+//                })
+//                targetAngleInSCS =
+//                    currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
+//                targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
 //            }
+
+            targetOrientationInNED =
+                it.convertOrientationToNED(targetAngleInSCS)
+
+            Timber.d(
+                buildString {
+                    append("Enough orientation to move. ")
+                    append("Calculated target drone orientation: $targetAngleInSCS, ")
+                    append("Headset benchmark orientation: ${data.benchmarkRotation.y}, ")
+                    append("Headset current orientation: ${data.currentRotation.y}, ")
+                    append("Drone benchmark: ${positionMonitor!!.getOrientationBenchmark()}")
+                    append("Target orientation in NED system: $targetOrientationInNED")
+                }
+            )
+
+            this.lastValidRotation = data.currentRotation
 
             // calculate the height (position changes around z axis)
             // TODO for debugging, get rid of the vertical position change first
