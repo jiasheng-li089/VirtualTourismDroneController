@@ -8,8 +8,12 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.BaseAdapter
 import android.widget.TextView
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.view.setPadding
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -83,7 +87,11 @@ class GPSMeasurementActivity : AppCompatActivity() {
         }
 
         viewModel.gapDistance.observe(this) { gap ->
-            "Horizontal/Vertical Distance (m): ${formatLocation("%.2f".format(gap.first))} / ${formatLocation("%.2f".format(gap.second))}".also {
+            "Horizontal/Vertical Distance (m): ${formatLocation("%.2f".format(gap.first))} / ${
+                formatLocation(
+                    "%.2f".format(gap.second)
+                )
+            }".also {
                 binding.tvGapDistance.text = it
             }
         }
@@ -134,7 +142,11 @@ class GPSMeasurementActivity : AppCompatActivity() {
     private fun updateBenchmarkLocation() {
         val loc = viewModel.mapLocation.value
 
-        "Benchmark Location: ${formatLocation(loc?.latitude)} / ${formatLocation(loc?.longitude)} / ${formatLocation(loc?.height)}".also {
+        "Benchmark Location: ${formatLocation(loc?.latitude)} / ${formatLocation(loc?.longitude)} / ${
+            formatLocation(
+                loc?.height
+            )
+        }".also {
             binding.tvBenchmarkLocation.text = it
         }
     }
@@ -158,7 +170,7 @@ class GPSMeasurementActivity : AppCompatActivity() {
         val dataCollections = listOf(viewModel.geodeticPosList, viewModel.trackingType)
         val spinnerViews = listOf(binding.spinnerLocations, binding.spinnerTrackingType)
 
-        for (i in 0..dataCollections.size -1) {
+        for (i in 0..dataCollections.size - 1) {
             val spinner = spinnerViews[i]
             val data = dataCollections[i]
 
@@ -178,7 +190,7 @@ class GPSMeasurementActivity : AppCompatActivity() {
                 override fun getView(
                     position: Int,
                     convertView: View?,
-                    parent: ViewGroup?
+                    parent: ViewGroup?,
                 ): View? {
                     var view = convertView
                     if (view == null) {
@@ -206,7 +218,7 @@ class GPSMeasurementActivity : AppCompatActivity() {
                     parent: AdapterView<*>?,
                     view: View?,
                     position: Int,
-                    id: Long
+                    id: Long,
                 ) {
                     val location = parent?.getItemAtPosition(position) as? GeodeticLocation?
                     viewModel.selectLocation(location)
@@ -217,21 +229,22 @@ class GPSMeasurementActivity : AppCompatActivity() {
 
             }
 
-        binding.spinnerTrackingType.onItemSelectedListener = object :AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: View?,
-                position: Int,
-                id: Long,
-            ) {
-                val trackingType = parent?.getItemAtPosition(position) as? String
-                viewModel.selectTrackingType(trackingType)
-            }
+        binding.spinnerTrackingType.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long,
+                ) {
+                    val trackingType = parent?.getItemAtPosition(position) as? String
+                    viewModel.selectTrackingType(trackingType)
+                }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-            }
+                override fun onNothingSelected(parent: AdapterView<*>?) {
+                }
 
-        }
+            }
         binding.btnStartRecord.setOnClickListener {
             viewModel.startOrStopRecord()
         }
@@ -239,11 +252,18 @@ class GPSMeasurementActivity : AppCompatActivity() {
             viewModel.clickSimulation()
         }
 
-        "Log File Path: ${DJIApplication.getLogFile().absolutePath}".also { binding.tvLogPath.text = it }
+        "Log File Path: ${DJIApplication.getLogFile().absolutePath}".also {
+            binding.tvLogPath.text = it
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        setContent {
+
+        }
 
         binding = ActivityGpsMeasurementBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -294,4 +314,23 @@ class GPSMeasurementActivity : AppCompatActivity() {
         super.onLowMemory()
         binding.vMap.onLowMemory()
     }
+
+}
+
+class MeasurementUIState(
+    benchmarkLocation: String,
+    droneLocation: String,
+    gaoDistance: String,
+    filePath: String,
+    droneStatus: String
+)
+
+@Preview(showBackground = true, name = "default")
+@Composable
+private fun measurementActivityPreview() {
+    measureActivity(MeasurementUIState("-/-/-", "-/-/-", "-", "-", "-"))
+}
+
+private fun measureActivity(state: MeasurementUIState) {
+
 }
