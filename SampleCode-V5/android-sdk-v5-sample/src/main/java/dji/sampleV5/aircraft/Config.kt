@@ -24,7 +24,7 @@ const val SENDING_FREQUENCY = 25
 const val COMPASS_OFFSET = 0.toDouble()
 
 // the movement of the headset will be apply to the drone after applying this scale
-const val HEADSET_MOVEMENT_SCALE = 0.5f
+var HEADSET_MOVEMENT_SCALE = 0.5f
 
 
 // current configuration of the thumb stick control scale factors

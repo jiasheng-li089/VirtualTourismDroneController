@@ -315,6 +315,10 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         binding.rotationMaximumVelocitySlider.addOnChangeListener { slider, value, fromUser ->
             MAXIMUM_ROTATION_VELOCITY = value.toDouble()
         }
+        binding.positionChangeVelocityScale.value = HEADSET_MOVEMENT_SCALE
+        binding.positionChangeVelocityScale.addOnChangeListener { _, value, _ ->
+            HEADSET_MOVEMENT_SCALE = value
+        }
 
         viewModel.remoteControlUIStatus.observe(this) {
             binding.spinnerControlMode.isEnabled = it

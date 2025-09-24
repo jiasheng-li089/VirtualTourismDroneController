@@ -139,6 +139,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         // velocity around east
         velocities[1] = - xyzVelocities[1] / cos(benchmarkOrientation) + xyzVelocities[0] / sin(benchmarkOrientation)
 
+        velocities[2] = xyzVelocities[2]
+
         return velocities
     }
 

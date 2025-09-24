@@ -1,28 +1,16 @@
 package dji.sampleV5.aircraft.virtualcontroller
 
-import android.os.SystemClock
 import android.util.Log
-import dji.sampleV5.aircraft.MAXIMUM_ROTATION_VELOCITY
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
-import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
-import dji.sampleV5.aircraft.currentControlScaleConfiguration
 import dji.sampleV5.aircraft.currentEFence
 import dji.sampleV5.aircraft.models.ControlStatusData
-import dji.sampleV5.aircraft.models.Vector2D
-import dji.sampleV5.aircraft.models.Vector3D
 import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
-import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.flightcontroller.FlightCoordinateSystem
-import dji.sdk.keyvalue.value.flightcontroller.RollPitchControlMode
-import dji.sdk.keyvalue.value.flightcontroller.VerticalControlMode
 import dji.sdk.keyvalue.value.flightcontroller.VirtualStickFlightControlParam
-import dji.sdk.keyvalue.value.flightcontroller.YawControlMode
-import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotation
-import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotationMode
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.et.action
@@ -31,7 +19,6 @@ import dji.v5.et.set
 import dji.v5.manager.aircraft.perception.PerceptionManager
 import dji.v5.manager.aircraft.perception.data.ObstacleAvoidanceType
 import dji.v5.manager.aircraft.perception.data.PerceptionDirection
-import dji.v5.manager.aircraft.virtualstick.Stick
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,345 +27,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import kotlin.math.abs
-import kotlin.math.pow
 
 
 typealias ControlStatusFeedback = (String, String) -> Unit
 typealias MessageNotifier = (Int, String, Throwable?) -> Unit
 typealias StatusUpdater = (String, String) -> Unit
 
-private fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
-    val param = VirtualStickFlightControlParam()
-    param.yaw = 0.0
-    param.roll = 0.0
-    param.pitch = 0.0
-    param.rollPitchCoordinateSystem = FlightCoordinateSystem.GROUND
-    param.verticalControlMode = VerticalControlMode.VELOCITY
-    param.yawControlMode = YawControlMode.ANGLE
-    param.rollPitchControlMode = RollPitchControlMode.VELOCITY
-    param.verticalControlMode = VerticalControlMode.POSITION
-    return param
-}
-
-private fun adjustDroneVelocityOneTime(
-    roll: Double? = null,
-    pitch: Double? = null,
-    yaw: Double? = null,
-    throttle: Double? = null,
-) {
-    val param = initDroneAdvancedParam()
-    if (null == yaw) {
-        // no valid angle, convert to velocity mode and set velocity to 0 to avoid rotation
-        param.yaw = 0.0
-        param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
-    } else {
-        param.yawControlMode = YawControlMode.ANGLE
-        param.yaw = yaw
-    }
-    if (null == roll) {
-        param.roll = 0.0
-    } else {
-        param.roll = roll
-    }
-    if (null == pitch) {
-        param.pitch = 0.0
-    } else {
-        param.pitch = pitch
-    }
-    if (null == throttle) {
-        param.verticalControlMode = VerticalControlMode.VELOCITY
-        param.verticalThrottle = 0.0
-    } else {
-        param.verticalControlMode = VerticalControlMode.POSITION
-        param.verticalThrottle = throttle
-    }
-
-    Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
-    VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
-}
-
-/**
- * adjust the angle of the gimbal; positive means rise the camera; negative means set the camera
- */
-private fun adjustCameraOrientation(angle: Double) {
-    val param = GimbalAngleRotation()
-    // pitch: the camera will rise (positive) or set (negative)
-    // roll: the camera will rotate counterclockwise (positive) and clockwise (negative)
-    // yaw: the camera will rotate towards left (positive) and right (negative)
-    param.pitch = angle
-    param.mode = GimbalAngleRotationMode.ABSOLUTE_ANGLE
-    param.duration = 1.0
-
-    KeyTools.createKey(GimbalKey.KeyRotateByAngle).action(param, { result ->
-        Timber.d("Rotate the gimbal successfully: $angle")
-    }, { error->
-        Timber.e("Failed to rotate the gimbal (${error.errorCode()}): ${error.hint()}")
-    })
-}
-
-/**
- * calculate the shortest angle starts from the original angle to the target angle.
- * positive means change in clockwise direction; negative means change in counterclockwise direction
- *
- * @param originAngle the original angle
- * @param targetAngle the target angle
- */
-private fun shortestAngleInSCS(originAngle: Double, targetAngle: Double): Double {
-    return ((targetAngle - originAngle + 540) % 360 - 180)
-}
-
-interface IControlStrategy {
-
-    fun isVirtualStickNeeded(): Boolean
-
-    fun isVirtualStickAdvancedParamNeeded(): Boolean
-
-    fun onControllerStatusData(data: ControlStatusData)
-
-    fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?)
-}
-
-class ControlViaThumbSticks() : IControlStrategy {
-    override fun isVirtualStickNeeded() = true
-
-    override fun isVirtualStickAdvancedParamNeeded() = TEST_VIRTUAL_STICK_ADVANCED_PARAM
-
-    private var currentValidStatusTimestamp = 0L
-
-    override fun onControllerStatusData(data: ControlStatusData) {
-        if (currentValidStatusTimestamp > data.sampleTimestamp) {
-            // ignore the old data, avoid the situation in which the device receives the old data later than the new data
-            return
-        }
-        currentValidStatusTimestamp = data.sampleTimestamp
-
-        VirtualStickManager.getInstance().leftStick.let {
-            // rotation
-            it.horizontalPosition = (mappingValues(data.leftThumbStickValue.x)
-                    / currentControlScaleConfiguration.scale.left_horizontal).toInt()
-            // upward and downward
-            it.verticalPosition = (mappingValues(data.leftThumbStickValue.y)
-                    / currentControlScaleConfiguration.scale.left_vertical).toInt()
-        }
-        VirtualStickManager.getInstance().rightStick?.let {
-            // left and right
-            it.horizontalPosition = (mappingValues(data.rightThumbStickValue.x)
-                    / currentControlScaleConfiguration.scale.right_horizontal).toInt()
-            // forward and backward
-            it.verticalPosition = (mappingValues(data.rightThumbStickValue.y)
-                    / currentControlScaleConfiguration.scale.right_vertical).toInt()
-        }
-    }
-
-    fun mappingValues(input: Float): Float {
-        val tmp = input.toDouble().pow(5.0)
-
-        return (tmp * Stick.MAX_STICK_POSITION_ABS).toFloat()
-    }
-
-    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
-        // it does not matter, even with position monitor, it is still impossible to achieve accurate control through thumbsticks
-
-    }
-}
-
-class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStrategy {
-
-    private var positionMonitor: IPositionMonitor? = null
-
-    private var lastValidSampleTime = 0L
-
-    private var lastSendCmdTimestamp = 0L
-
-    private var benchmarkRotation: Vector3D? = null
-
-    private var lastValidRotation: Vector3D? = null
-
-    private var benchmarkPosition: Vector2D? = null
-
-    private var lastValidPosition: Vector2D? = null
-
-    private var lastPositionAroundZ: Double = 0.0
-
-    override fun isVirtualStickNeeded(): Boolean = true
-
-    override fun isVirtualStickAdvancedParamNeeded(): Boolean = true
-
-    // how to implement the control?
-    // base on two states in each packet to calculate the difference and apply this difference to the drone?
-    // or base on two states (last applied state and currently received state) to calculate the difference?
-
-    override fun onControllerStatusData(data: ControlStatusData) {
-        // no valid position monitor, skip the control status data first
-        positionMonitor?.let {
-            // receiving old data, ignore it
-            if (lastValidSampleTime >= data.sampleTimestamp) return
-
-            // there is a maximum frequency limitation regarding sending data to the drone through the virtual stick advanced parameters
-            // but the frequency of sampling data in headset is bigger then this valid, so we need to combine multi frames of data into one drone command
-            val currentLocalTimestamp = SystemClock.elapsedRealtime()
-            if (lastValidSampleTime > 0L && currentLocalTimestamp - this.lastSendCmdTimestamp <= updateVelocityInterval) {
-                return
-            }
-
-            if (null == benchmarkRotation) {
-                this.benchmarkRotation = data.benchmarkRotation
-                this.lastValidRotation = data.currentRotation
-            }
-            if (null == benchmarkPosition) {
-                this.benchmarkPosition = data.benchmarkPosition.to2D()
-                this.lastValidPosition = data.currentPosition.to2D()
-            }
-
-            var targetOrientationInNED: Double? = null
-            var rollSpeed: Double? = null
-            var pitchSpeed: Double? = null
-            var throttle: Double? = null
-            val timeGapInSeconds = if (this.lastSendCmdTimestamp == 0L)
-                data.sampleTimestamp - data.benchmarkSampleTimestamp * 1.0
-            else
-                (currentLocalTimestamp - this.lastSendCmdTimestamp) / 1000.0
-
-            // both these angles are relative orientation, range from 0 to 360
-            var targetAngleInSCS = data.getOrientationInSCS()
-            val currentAngleInSCS = it.getOrientationInSCS()
-
-            val shortestAngle = shortestAngleInSCS(currentAngleInSCS, targetAngleInSCS)
-            // calculate if the difference between current angle and target one is too large
-            // check if go around the shortest path, it still exceed the maximum rotation velocity
-
-            // TODO remove the maximum speed limitation, the rotation data has been smoothed on the headset side
-            val maximumAngleChange = MAXIMUM_ROTATION_VELOCITY * timeGapInSeconds
-            // only log when changes need to be applied
-            Timber.d(
-                buildString {
-                    append("Drone current orientation: $currentAngleInSCS, ")
-                    append("Headset current orientation: $targetAngleInSCS, ")
-                    append("Shortest angle is: $shortestAngle, ")
-                    append("Maximum angle change: $maximumAngleChange")
-                }
-            )
-//            if (maximumAngleChange > 0 && abs(shortestAngle) > maximumAngleChange) {
-//                Timber.d(buildString {
-//                    append(
-//                        "The expected target drone orientation: ${
-//                            it.convertOrientationToNED(
-//                                targetAngleInSCS
-//                            )
-//                        }"
-//                    )
-//                })
-//                targetAngleInSCS =
-//                    currentAngleInSCS + (if (shortestAngle > 0) maximumAngleChange else -maximumAngleChange)
-//                targetAngleInSCS = targetAngleInSCS.normalizeToSCS()
-//            }
-
-            targetOrientationInNED =
-                it.convertOrientationToNED(targetAngleInSCS)
-
-            Timber.d(
-                buildString {
-                    append("Enough orientation to move. ")
-                    append("Calculated target drone orientation: $targetAngleInSCS, ")
-                    append("Headset benchmark orientation: ${data.benchmarkRotation.y}, ")
-                    append("Headset current orientation: ${data.currentRotation.y}, ")
-                    append("Drone benchmark: ${positionMonitor!!.getOrientationBenchmark()}")
-                    append("Target orientation in NED system: $targetOrientationInNED")
-                }
-            )
-
-            this.lastValidRotation = data.currentRotation
-
-            // calculate the height (position changes around z axis)
-            // TODO for debugging, get rid of the vertical position change first
-//            if (abs(data.currentPosition.z - lastPositionAroundZ) >= 0.1) {
-//                Timber.d("The change in the Z axis is large enough to assign a target position to the drone. Old position: $lastPositionAroundZ, new position: ${data.currentPosition.z}")
-//                throttle = data.currentPosition.z.toDouble()
-//                this.lastPositionAroundZ = throttle
-//            }
-
-            // calculate the position changes around x and y axes
-            if (abs(data.currentPosition.x - lastValidPosition!!.x) >= 0.1 || abs(data.currentPosition.y - lastValidPosition!!.y) >= 0.1) {
-                Timber.d("The changes in the X axis and Y axis are large enough to assign speeds in these two directions: Old position: (${lastValidPosition!!.x}, ${lastValidPosition!!.y}), new position: (${data.currentPosition.x}, ${data.currentPosition.y})")
-                var velocityAroundX =
-                    (data.currentPosition.x - lastValidPosition!!.x) / timeGapInSeconds
-                var velocityAroundY =
-                    (data.currentPosition.y - lastValidPosition!!.y) / timeGapInSeconds
-
-                // TODO convert the velocities around x and y to the ones around north and east
-            }
-
-            if (null != targetOrientationInNED || null != rollSpeed || null != pitchSpeed || null != throttle) {
-                adjustDroneVelocityOneTime(rollSpeed, pitchSpeed, targetOrientationInNED, throttle)
-            }
-
-            // update gimbal angle, don't care about update in last time, only synchronize user's attitude to the gimbal
-            // range from 0 to 360,
-            // the value increases from 0 when user sets his head;
-            // the value decreases from 360 when user rises this head
-            // valid value range [0, 90] and [270, 360)
-            val currentAngle = data.currentRotation.x
-            val targetAngle =
-            if (currentAngle >= 0 && currentAngle <= 90) {
-                - currentAngle
-            } else if (currentAngle >= 270 && currentAngle < 360) {
-                360 - currentAngle
-            } else {
-                null
-            }
-            targetAngle?.let {
-                adjustCameraOrientation(it.toDouble())
-            }
-
-            this.lastValidSampleTime = data.sampleTimestamp
-
-            // compare current rotation to last valid rotation to calculate the difference
-
-
-            // make this thing simple, ignore the position of the drone, just synchronize the velocity of the headset to the drone
-
-            // for the safety, only apply the rotation to the drone
-
-
-//            val updateIntervalInSeconds = updateVelocityInterval / 1000.0
-//
-//            // calculate the velocities around x, y, z axes;
-//            val currentRelativeHMDX = (data.currentPosition.x - data.benchmarkPosition.x) * HEADSET_MOVEMENT_SCALE
-//            val currentRelativeHMDY = (data.currentPosition.y - data.benchmarkPosition.y) * HEADSET_MOVEMENT_SCALE
-//            val currentRelativeHMDZ = data.currentPosition.z - data.benchmarkPosition.z
-//
-//            var velocities = DoubleArray(3)
-//            velocities[0]
-//                (currentRelativeHMDX - it.getX()) / updateIntervalInSeconds
-//            velocities[1] =
-//                (currentRelativeHMDY - it.getY()) / updateIntervalInSeconds
-//            velocities[2] =
-//                (currentRelativeHMDZ - it.getZ()) / updateIntervalInSeconds
-//
-//            // convert these velocities to the ones based on NED coordinate system;
-//            velocities = it.convertCoordinateToNED(velocities)
-//
-//            // set the velocities to the drone
-//            Timber.i("Update drone velocities: ${velocities[0]} / ${velocities[1]} / ${velocities[2]}")
-//            adjustDroneVelocityOneTime(velocities[1], velocities[0], 0.0, velocities[2])
-//
-//            // update last valid sample time
-            this.lastValidSampleTime = data.sampleTimestamp
-            this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
-        }
-    }
-
-    override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
-        this.positionMonitor = monitor
-    }
-}
-
-fun createControlStrategy(controlMode: Int): IControlStrategy {
-    return when (controlMode) {
-        0 -> ControlViaThumbSticks() // thumbsticks
-        else -> ControlViaHeadset(1000L / SENDING_FREQUENCY) // headset
-    }
-}
 
 interface IDroneController {
 
@@ -588,7 +242,6 @@ class VirtualDroneController(
             // already got ready or in the preparing stage
             return
         }
-
         // for now, there is no obvious status regarding this
         // the only way to do is to check if the drone reaches the height obtained from `KeyAircraftAttitude`
         // however, the height recognition is not that accurate.
