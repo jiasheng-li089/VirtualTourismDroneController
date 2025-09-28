@@ -68,7 +68,11 @@ data class GeodeticLocation(
     @CsvBindByName(column = "Lon", required = true) var longitude: Double = 0.0,
     @CsvBindByName(column = "CalcDate") var calcDate: String? = null,
     @CsvBindByName(column = "OrthHeight", required = true) var height: Float = 0f,
-)
+) {
+    override fun toString(): String {
+        return name ?: "null"
+    }
+}
 
 data class LocationRecord(
     @CsvBindByName(column = "BenchmarkLatitude") var bLatitude: Double,
