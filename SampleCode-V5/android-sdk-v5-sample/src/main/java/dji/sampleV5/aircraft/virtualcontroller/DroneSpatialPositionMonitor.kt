@@ -59,10 +59,16 @@ open class BaseDroneSpatialPositionMonitor () {
         targetAngle = targetAngle.toRadians()
 
         // velocity in north, which is y'
-        velocities[0] = - (xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle))
+        velocities[0] = (xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle))
 
         // velocity in east, which is x'
-        velocities[1] = - (xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle))
+        velocities[1] = (xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle))
+
+        targetAngle = 90.0.toRadians()
+        val tmpX = - (velocities[1] * cos(targetAngle) - velocities[0] * sin(targetAngle))
+        val tmpY = - (velocities[1] * sin(targetAngle) + velocities[0] * cos(targetAngle))
+        velocities[0] = tmpY
+        velocities[1] = tmpX
 
         velocities[2] = xyzVelocities[2]
 
