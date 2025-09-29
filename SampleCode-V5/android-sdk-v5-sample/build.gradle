@@ -58,12 +58,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
+        jvmTarget = JavaVersion.VERSION_11
         freeCompilerArgs += ["-Xjvm-default=all"]
     }
 
@@ -157,6 +157,15 @@ dependencies {
     implementation deps.playservicesmaps
     implementation deps.playserviceslocation
     implementation deps.playservicesbase
+
+    testImplementation deps.junit
+    testImplementation deps.kotlin_test
+    testImplementation deps.androidXTest
+    testImplementation deps.mockito_core
+    testImplementation deps.mockito_kotlin
+    testImplementation deps.mockk
+
+    testImplementation deps.aircraftProvided
 
     //FFmpeg library
 //    implementation 'com.arthenica:ffmpeg-kit-full-gpl:6.0-2.LTS'

@@ -39,7 +39,40 @@ interface IPositionMonitor {
     fun stop()
 }
 
-open class DroneSpatialPositionMonitor (private var observable: RawDataObservable, private val statusUpdater: StatusUpdater?) : OnRawDataObserver, IPositionMonitor {
+open class BaseDroneSpatialPositionMonitor () {
+
+    protected var currentOrientation: Double = Double.NaN
+
+    fun innerConvertCoordinateToNED(xyzVelocities: DoubleArray): DoubleArray {
+        val velocities = xyzVelocities.copyOf(xyzVelocities.size)
+
+        // conversion:
+        //              x maps to east
+        //              y maps to north
+        // x' = x cos θ - y sin θ
+        // y' = x sin θ + y cos θ
+
+        var targetAngle = if (currentOrientation >= 0)
+            currentOrientation
+        else
+            360 + currentOrientation
+        targetAngle = targetAngle.toRadians()
+
+        // velocity in north, which is y'
+        velocities[0] = - (xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle))
+
+        // velocity in east, which is x'
+        velocities[1] = - (xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle))
+
+        velocities[2] = xyzVelocities[2]
+
+        return velocities
+    }
+
+    private fun Double.toRadians() = Math.toRadians(this)
+}
+
+open class DroneSpatialPositionMonitor (private var observable: RawDataObservable, private val statusUpdater: StatusUpdater?): BaseDroneSpatialPositionMonitor(), OnRawDataObserver, IPositionMonitor {
 
     private var x: Double = 0.0
 
@@ -53,8 +86,6 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
     // -90 means the drone is toward West
     // 180 and -180 means the drone is toward South
     private var benchmarkOrientation: Double = Double.NaN
-
-    private var currentOrientation: Double = Double.NaN
 
     private val attitudeKey = FlightControllerKey.KeyAircraftAttitude
 
@@ -130,18 +161,8 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         this.currentGimbalAttitude = attitude
     }
 
-    override fun convertCoordinateToNED(xyzVelocities: DoubleArray): DoubleArray {
-        val velocities = xyzVelocities.copyOf(xyzVelocities.size)
-
-        // velocity around north
-        velocities[0] = - xyzVelocities[0] / cos(benchmarkOrientation) + xyzVelocities[1] / sin(benchmarkOrientation)
-
-        // velocity around east
-        velocities[1] = - xyzVelocities[1] / cos(benchmarkOrientation) + xyzVelocities[0] / sin(benchmarkOrientation)
-
-        velocities[2] = xyzVelocities[2]
-
-        return velocities
+    override fun convertCoordinateToNED(velocitiesInSCS: DoubleArray): DoubleArray {
+        return super.innerConvertCoordinateToNED(velocitiesInSCS)
     }
 
     override fun convertOrientationToNED(orientationInSCS: Double): Double {

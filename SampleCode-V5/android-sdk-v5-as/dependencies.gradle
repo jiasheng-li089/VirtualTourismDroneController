@@ -69,6 +69,7 @@ ext {
 
     //kotlin
     deps.kotlin = "org.jetbrains.kotlin:kotlin-stdlib:$KOTLIN_VERSION"
+    deps.kotlin_test = "org.jetbrains.kotlin:kotlin-test-junit:$KOTLIN_VERSION"
 
     //glide
     deps.glide = 'com.github.bumptech.glide:glide:4.9.0'
@@ -109,4 +110,15 @@ ext {
 
     // log
     deps.timber = 'com.jakewharton.timber:timber:5.0.1'
+
+    // junit
+    deps.junit = "junit:junit:$JUNIT_VERSION"
+    // Optional -- Robolectric environment
+    deps.androidXTest = "androidx.test:core:1.7.0"
+    // Optional -- Mockito framework
+    deps.mockito_core = "org.mockito:mockito-core:5.20.0"
+    // Optional -- mockito-kotlin
+    deps.mockito_kotlin = "org.mockito.kotlin:mockito-kotlin:5.4.0"
+    // Optional -- Mockk framework
+    deps.mockk = "io.mockk:mockk:1.14.5"
 }

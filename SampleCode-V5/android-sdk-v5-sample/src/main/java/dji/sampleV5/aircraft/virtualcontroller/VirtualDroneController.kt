@@ -197,9 +197,8 @@ class VirtualDroneController(
             positionMonitor?.stop()
 
             positionMonitor = if (true == controlStrategy?.isVirtualStickAdvancedParamNeeded())
-                DroneSpatialPositionMonitorWithEFence(
-                    currentEFence,
-                    1000L / SENDING_FREQUENCY, observable, statusUpdater
+                DroneSpatialPositionMonitor(
+                    observable, statusUpdater
                 )
             else
                 DroneSpatialPositionMonitor(observable, statusUpdater)
@@ -398,6 +397,7 @@ class VirtualDroneController(
     }
 
     /**
+     * This method is just for test.
      * In velocity mode and body coordinate system, roll means forward/backward, pitch means right/left
      * yaw: positive rotate towards right, negative rotate towards left
      *

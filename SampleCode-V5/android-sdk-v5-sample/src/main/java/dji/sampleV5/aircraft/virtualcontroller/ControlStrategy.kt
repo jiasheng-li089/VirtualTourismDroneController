@@ -5,9 +5,11 @@ import dji.sampleV5.aircraft.HEADSET_MOVEMENT_SCALE
 import dji.sampleV5.aircraft.MAXIMUM_ROTATION_VELOCITY
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
+import dji.sampleV5.aircraft.VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
 import dji.sampleV5.aircraft.currentControlScaleConfiguration
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.models.Vector3D
+import dji.sampleV5.aircraft.utils.format
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.flightcontroller.FlightCoordinateSystem
@@ -21,7 +23,10 @@ import dji.v5.et.action
 import dji.v5.manager.aircraft.virtualstick.Stick
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import timber.log.Timber
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sin
 
 
 internal fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
@@ -70,8 +75,10 @@ internal fun adjustDroneVelocityOneTime(
     }
     if (null == throttle) {
         param.verticalThrottle = 0.0
+        param.verticalControlMode = VerticalControlMode.VELOCITY
     } else {
         param.verticalThrottle = throttle
+        param.verticalControlMode = VerticalControlMode.POSITION
     }
 
     Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
@@ -210,28 +217,45 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
                 this.lastValidPosition = data.benchmarkPosition
             }
 
-            val timeGapInSeconds = if (this.lastSendCmdTimestamp == 0L)
-                data.sampleTimestamp - data.benchmarkSampleTimestamp * 1.0
-            else
+            val timeGapInSeconds = if (this.lastSendCmdTimestamp == 0L) {
+                val gap = data.sampleTimestamp - data.benchmarkSampleTimestamp * 1.0
+                if (gap == 0.0) {
+                    this.lastValidSampleTime = data.sampleTimestamp
+                    this.lastSendCmdTimestamp = currentLocalTimestamp
+                    return@let
+                }
+                gap
+            } else
                 (currentLocalTimestamp - this.lastSendCmdTimestamp) / 1000.0
 
-            val targetOrientationInNED = calculateTargetAttitudeInNED(data, it, timeGapInSeconds, it)
-            this.lastValidRotation = data.currentRotation
+            Timber.d("Current time gap: $timeGapInSeconds")
 
-            // calculate the height (position changes around z axis)
-            // TODO for debugging, get rid of the vertical position change first
-//            if (abs(data.currentPosition.z - lastPositionAroundZ) >= 0.1) {
-//                Timber.d("The change in the Z axis is large enough to assign a target position to the drone. Old position: $lastPositionAroundZ, new position: ${data.currentPosition.z}")
-//                throttle = data.currentPosition.z.toDouble()
-//                this.lastPositionAroundZ = throttle
-//            }
+            // calculate the target attitude in NED coordinate system
+            // TODO for test, get rid of the rotation and moving upward/downward first
+//             var targetOrientationInNED: Double? = null
+            val targetOrientationInNED = calculateTargetAttitudeInNED(data, timeGapInSeconds, it)
+
+            // right here, rather than setting the velocity in upward/downward direction, assign a target height to the drone
+//            var targetAltitudeInNED: Double? = null
+            val targetAltitudeInNED = calculateTargetAltitudeInNED(data, timeGapInSeconds, it)
 
             // calculate the velocities in north-south, east-west and downward-upward directions
-            val nedVelocity = calculateVelocityInXYZ(lastValidPosition!!,
-                data.currentPosition, timeGapInSeconds, it)
+            val nedVelocity = calculateVelocityInNED(lastValidPosition!!,
+                data.currentPosition, timeGapInSeconds,
+                data.currentRotation.y.toDouble(), it)
 
-            if (null != targetOrientationInNED || 0.0 != nedVelocity[0] || 0.0 != nedVelocity[1] || 0.0 != nedVelocity[2]) {
-                adjustDroneVelocityOneTime(nedVelocity[0], nedVelocity[1], targetOrientationInNED, nedVelocity[2])
+            if (abs(nedVelocity[0]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
+                || abs(nedVelocity[1]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
+                || abs(nedVelocity[2]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE) {
+                Timber.d("Velocity exceeds the maximum limitation (N/E/D): ${nedVelocity[0]} / ${nedVelocity[1]} / ${nedVelocity[2]}")
+                return@let
+            }
+
+            this.lastValidRotation = data.currentRotation
+            this.lastValidPosition = data.currentPosition
+
+            if (null != targetOrientationInNED || 0.0 != nedVelocity[0] || 0.0 != nedVelocity[1] || 0.0 != nedVelocity[2] || targetAltitudeInNED != null) {
+                adjustDroneVelocityOneTime(nedVelocity[0], nedVelocity[1], targetOrientationInNED, targetAltitudeInNED)
             }
 
             // update gimbal angle, don't care about update in last time, only synchronize user's attitude to the gimbal
@@ -254,31 +278,49 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 
 //            // update last valid sample time
             this.lastValidSampleTime = data.sampleTimestamp
-            this.lastSendCmdTimestamp = SystemClock.elapsedRealtime()
+            this.lastSendCmdTimestamp = currentLocalTimestamp
         }
     }
 
-    private fun calculateVelocityInXYZ(lastPosition: Vector3D, currentPosition: Vector3D,
-                                       gapTimestamp: Double, positionMonitor: IPositionMonitor): DoubleArray {
+    private fun calculateVelocityInNED(lastPosition: Vector3D, currentPosition: Vector3D,
+                                       gapTimestamp: Double, headsetOrientation: Double, positionMonitor: IPositionMonitor): DoubleArray {
         val xyzVelocity = DoubleArray(3)
 
-        xyzVelocity[0] = (currentPosition.x - lastPosition.x) / gapTimestamp * HEADSET_MOVEMENT_SCALE
-        xyzVelocity[1] = (currentPosition.y - lastPosition.y) / gapTimestamp * HEADSET_MOVEMENT_SCALE
-        xyzVelocity[2] = (currentPosition.z - lastPosition.z) / gapTimestamp * HEADSET_MOVEMENT_SCALE
+        // INFO in unity, the z axis means forward/backward, the x axis means right/left, and the y axis means upward/downward
+        val xDiffInXYZ = currentPosition.x - lastPosition.x
+        val yDiffInXYZ = currentPosition.z - lastPosition.z
+        val zDiffInXYZ = currentPosition.y - lastPosition.y
 
-        Timber.d("Velocity in X/Y/Z axes: ${xyzVelocity[0]} / ${xyzVelocity[1]} / ${xyzVelocity[2]}")
+        Timber.d("Position change in X/Y/Z: ${xDiffInXYZ.format(4)} / ${yDiffInXYZ.format(4)} / ${zDiffInXYZ.format(4)}")
+
+        val xVelocity = xDiffInXYZ / gapTimestamp * HEADSET_MOVEMENT_SCALE
+        val yVelocity = yDiffInXYZ / gapTimestamp * HEADSET_MOVEMENT_SCALE
+        val zVelocity = zDiffInXYZ / gapTimestamp * HEADSET_MOVEMENT_SCALE
+
+        val angle = Math.toRadians(360 - headsetOrientation)
+        // x'
+        xyzVelocity[0] = xVelocity * cos(angle) - yVelocity * sin(angle)
+        xyzVelocity[1] = xVelocity * sin(angle) + yVelocity * cos(angle)
+        xyzVelocity[2] = zVelocity
+
+        Timber.d("Velocity in X/Y/Z axes: ${xyzVelocity[0].format(4)} / ${xyzVelocity[1].format(4)} / ${xyzVelocity[2].format(4)}")
 
         val result = positionMonitor.convertCoordinateToNED(xyzVelocity)
-        Timber.d("Velocity in N/E/D axes: ${result[0]} / ${result[1]} / ${result[2]}")
+        Timber.d("Velocity in N/E/D axes: ${result[0].format(4)} / ${result[1].format(4)} / ${result[2].format(4)}")
 
+        // TODO for debug, only returns 0
+//        return arrayOf(result[0], 0.0, 0.0).toDoubleArray()
         return result
+    }
+
+    private fun calculateTargetAltitudeInNED(data: ControlStatusData, timeGapInSeconds: Double, monitor: IPositionMonitor): Double? {
+        return data.currentPosition.y.toDouble()
     }
 
     private fun calculateTargetAttitudeInNED(
         data: ControlStatusData,
-        monitor: IPositionMonitor,
         timeGapInSeconds: Double,
-        positionMonitor: IPositionMonitor,
+        monitor: IPositionMonitor,
     ): Double? {
         // both these angles are relative orientation, range from 0 to 360
         var targetAngleInSCS = data.getOrientationInSCS()
@@ -305,11 +347,10 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 
         Timber.d(
             buildString {
-                append("Enough orientation to move. ")
                 append("Calculated target drone orientation: $targetAngleInSCS, ")
                 append("Headset benchmark orientation: ${data.benchmarkRotation.y}, ")
                 append("Headset current orientation: ${data.currentRotation.y}, ")
-                append("Drone benchmark: ${positionMonitor.getOrientationBenchmark()}")
+                append("Drone benchmark: ${monitor.getOrientationBenchmark()}, ")
                 append("Target orientation in NED system: $targetOrientationInNED")
             }
         )

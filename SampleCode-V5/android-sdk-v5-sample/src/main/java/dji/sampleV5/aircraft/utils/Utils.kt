@@ -10,12 +10,12 @@ import java.io.InputStreamReader
 import java.lang.reflect.Type
 
 
-fun Float.format(): String {
-    return "%.2f".format(this)
+fun Float.format(numberOfZero: Int = 2): String {
+    return "%.${numberOfZero}f".format(this)
 }
 
-fun Double.format(): String {
-    return "%.2f".format(this)
+fun Double.format(numberOfZero: Int = 2): String {
+    return "%.${numberOfZero}f".format(this)
 }
 
 fun Int.format(numberOfZero: Int = 2): String {
