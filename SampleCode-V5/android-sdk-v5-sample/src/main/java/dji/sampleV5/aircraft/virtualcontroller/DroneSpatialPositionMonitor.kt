@@ -32,6 +32,8 @@ interface IPositionMonitor {
 
     fun convertCoordinateToNED(velocitiesInSCS: DoubleArray): DoubleArray
 
+    fun convertCoordinateToBody(velocitiesInSCS: DoubleArray): DoubleArray
+
     fun convertOrientationToNED(orientationInSCS: Double): Double
 
     fun start()
@@ -77,6 +79,18 @@ open class BaseDroneSpatialPositionMonitor () {
         nedVelocities[2] = xyzVelocities[2]
 
         return nedVelocities
+    }
+
+    fun innerConvertCoordinateToBody(xyzVelocities: DoubleArray): DoubleArray {
+        val bodyVelocities = xyzVelocities.copyOf(xyzVelocities.size)
+
+        // conversion:
+        //  x maps to right
+        //  y maps to forward
+        // x' = x cos θ - y sin θ
+        // y' = x sin θ + y cos θ
+        var targetAngle = ((- (currentOrientation - benchmarkOrientation)) % 360).toRadians()
+        return bodyVelocities
     }
 
     private fun Double.toRadians() = Math.toRadians(this)
@@ -169,6 +183,10 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
 
     override fun convertCoordinateToNED(velocitiesInSCS: DoubleArray): DoubleArray {
         return super.innerConvertCoordinateToNED(velocitiesInSCS)
+    }
+
+    override fun convertCoordinateToBody(velocitiesInSCS: DoubleArray): DoubleArray {
+        return super.innerConvertCoordinateToBody(velocitiesInSCS)
     }
 
     override fun convertOrientationToNED(orientationInSCS: Double): Double {

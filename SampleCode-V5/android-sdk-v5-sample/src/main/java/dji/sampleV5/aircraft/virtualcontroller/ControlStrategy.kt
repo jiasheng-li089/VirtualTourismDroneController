@@ -45,13 +45,13 @@ internal fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
  * @param roll  specify the velocity in the direction of north and south, positive value means going towards north, negative value means south
  * @param pitch specify the velocity in the direction of east and west, positive value means going towards east, negative value means west
  * @param yaw   specify the target attitude of the drone, null means keep its current attitude
- * @param throttle  specify the velocity in vertical direction, positive means going down, negative means going up
+ * @param height  specify the target height of the drone
  */
-internal fun adjustDroneVelocityOneTime(
+internal fun adjustDroneVelocityOneTimeNED(
     roll: Double? = null,
     pitch: Double? = null,
     yaw: Double? = null,
-    throttle: Double? = null,
+    height: Double? = null,
 ) {
     val param = initDroneAdvancedParam()
     if (null == yaw) {
@@ -72,11 +72,49 @@ internal fun adjustDroneVelocityOneTime(
     } else {
         param.pitch = pitch
     }
-    if (null == throttle) {
+    if (null == height) {
         param.verticalThrottle = 0.0
         param.verticalControlMode = VerticalControlMode.VELOCITY
     } else {
-        param.verticalThrottle = throttle
+        param.verticalThrottle = height
+        param.verticalControlMode = VerticalControlMode.POSITION
+    }
+
+    Timber.d("Sending advanced stick param to the drone: ${param.toJson()}")
+    VirtualStickManager.getInstance().sendVirtualStickAdvancedParam(param)
+}
+
+
+/**
+ * assign velocities, target attitude, target height to the drone
+ * @param forwardBackward specify the velocity in the direction of forward and back ward, positive value means going forward, negative value means going backward
+ * @param rightLeft specify the velocity in the direction of right and left, positive value means going right, negative value means going left
+ * @param targetAttitude specify the target attitude of the drone, null means no change
+ * @param height specify the target height of the drone
+ */
+internal fun adjustDroneVelocityOneTimeBodyBased(
+    forwardBackward: Double = 0.0,
+    rightLeft: Double = 0.0,
+    targetAttitude: Double? = 0.0,
+    height: Double? = null
+) {
+    val param = initDroneAdvancedParam()
+    if (null == targetAttitude) {
+        // no valid angle, convert to velocity mode and set velocity to 0 to avoid rotation
+        param.yaw = 0.0
+        param.yawControlMode = YawControlMode.ANGULAR_VELOCITY
+    } else {
+        param.yawControlMode = YawControlMode.ANGLE
+        param.yaw = targetAttitude
+    }
+    param.roll = forwardBackward
+    param.pitch = rightLeft
+    param.rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
+    if (null == height) {
+        param.verticalThrottle = 0.0
+        param.verticalControlMode = VerticalControlMode.VELOCITY
+    } else {
+        param.verticalThrottle = height
         param.verticalControlMode = VerticalControlMode.POSITION
     }
 
@@ -87,18 +125,20 @@ internal fun adjustDroneVelocityOneTime(
 /**
  * adjust the angle of the gimbal; positive means rising the camera; negative means setting the camera, the angle should range from -90 to 90
  */
-private fun adjustCameraOrientation(angle: Double) {
+private fun adjustCameraOrientation(riseSet: Double, roll: Double) {
     val param = GimbalAngleRotation()
     // pitch: the camera will rise (positive) or set (negative)
     // roll: the camera will rotate counterclockwise (positive) and clockwise (negative)
     // yaw: the camera will rotate towards left (positive) and right (negative)
-    param.pitch = angle
+    param.pitch = riseSet
+    param.roll = roll
+    param.yaw = 0.0
     param.mode = GimbalAngleRotationMode.ABSOLUTE_ANGLE
     param.duration = 1.0
 
     KeyTools.createKey(GimbalKey.KeyRotateByAngle).action(param, { result ->
-        Timber.d("Rotate the gimbal successfully: $angle")
-    }, { error->
+        Timber.d("Rotate the gimbal successfully: $riseSet")
+    }, { error ->
         Timber.e("Failed to rotate the gimbal (${error.errorCode()}): ${error.hint()}")
     })
 }
@@ -165,7 +205,10 @@ class ControlViaThumbSticks() : IControlStrategy {
     }
 }
 
-class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStrategy {
+class ControlViaHeadset(
+    private val updateVelocityInterval: Long,
+    private val nedBased: Boolean = true
+) : IControlStrategy {
 
     private var positionMonitor: IPositionMonitor? = null
 
@@ -234,23 +277,43 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 //            var targetAltitudeInNED: Double? = null
             val targetAltitudeInNED = calculateTargetAltitudeInNED(data, timeGapInSeconds, it)
 
-            // calculate the velocities in north-south, east-west and downward-upward directions
-            val nedVelocity = calculateVelocityInNED(lastValidPosition!!,
+            // calculate the velocities
+            // in north-south, east-west and downward-upward directions
+            // or
+            // in forward-backward, right-left and downward-upward directions
+            val velocities = calculateVelocities(
+                lastValidPosition!!,
                 data.currentPosition, timeGapInSeconds,
-                data.currentRotation.y.toDouble(), it)
+                data.currentRotation.y.toDouble(), it
+            )
 
-            if (abs(nedVelocity[0]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
-                || abs(nedVelocity[1]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
-                || abs(nedVelocity[2]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE) {
-                Timber.d("Velocity exceeds the maximum limitation (N/E/D): ${nedVelocity[0]} / ${nedVelocity[1]} / ${nedVelocity[2]}")
+            if (abs(velocities[0]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
+                || abs(velocities[1]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
+                || abs(velocities[2]) > VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
+            ) {
+                Timber.d("Velocity exceeds the maximum limitation (N/E/D): ${velocities[0]} / ${velocities[1]} / ${velocities[2]}")
                 return@let
             }
 
             this.lastValidRotation = data.currentRotation
             this.lastValidPosition = data.currentPosition
 
-            if (null != targetOrientationInNED || 0.0 != nedVelocity[0] || 0.0 != nedVelocity[1] || 0.0 != nedVelocity[2] || targetAltitudeInNED != null) {
-                adjustDroneVelocityOneTime(nedVelocity[0], nedVelocity[1], targetOrientationInNED, targetAltitudeInNED)
+            if (null != targetOrientationInNED || 0.0 != velocities[0] || 0.0 != velocities[1] || 0.0 != velocities[2] || targetAltitudeInNED != null) {
+                if (nedBased) {
+                    adjustDroneVelocityOneTimeNED(
+                        velocities[0],
+                        velocities[1],
+                        targetOrientationInNED,
+                        targetAltitudeInNED
+                    )
+                } else {
+                    adjustDroneVelocityOneTimeBodyBased(
+                        velocities[0],
+                        velocities[1],
+                        targetOrientationInNED,
+                        targetAltitudeInNED
+                    )
+                }
             }
 
             // update gimbal angle, don't care about update in last time, only synchronize user's attitude to the gimbal
@@ -261,14 +324,14 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
             val currentAngle = data.currentRotation.x
             val targetAngle =
                 if (currentAngle >= 0 && currentAngle <= 90) {
-                    - currentAngle
+                    -currentAngle
                 } else if (currentAngle >= 270 && currentAngle < 360) {
                     360 - currentAngle
                 } else {
                     null
                 }
             targetAngle?.let {
-                adjustCameraOrientation(it.toDouble())
+                adjustCameraOrientation(it.toDouble(), 0.0)
             }
 
 //            // update last valid sample time
@@ -277,8 +340,13 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
         }
     }
 
-    private fun calculateVelocityInNED(lastPosition: Vector3D, currentPosition: Vector3D,
-                                       gapTimestamp: Double, headsetOrientation: Double, positionMonitor: IPositionMonitor): DoubleArray {
+    private fun calculateVelocities(
+        lastPosition: Vector3D,
+        currentPosition: Vector3D,
+        gapTimestamp: Double,
+        headsetOrientation: Double,
+        positionMonitor: IPositionMonitor
+    ): DoubleArray {
         val xyzVelocity = DoubleArray(3)
 
         // INFO in unity, the z axis means forward/backward, the x axis means right/left, and the y axis means upward/downward
@@ -286,29 +354,55 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
         val yDistance = currentPosition.z - lastPosition.z
         val zDistance = currentPosition.y - lastPosition.y
 
-        Timber.d("Position change in X/Y/Z: ${xDistance.format(4)} / ${yDistance.format(4)} / ${zDistance.format(4)}")
+        Timber.d(
+            "Position change in X/Y/Z: ${xDistance.format(4)} / ${yDistance.format(4)} / ${
+                zDistance.format(
+                    4
+                )
+            }"
+        )
 
         val xVelocity = xDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
         val yVelocity = yDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
         val zVelocity = zDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
 
-        val angle = Math.toRadians(360 - headsetOrientation)
-        // x'
-        xyzVelocity[0] = xVelocity * cos(angle) - yVelocity * sin(angle)
-        xyzVelocity[1] = xVelocity * sin(angle) + yVelocity * cos(angle)
-        xyzVelocity[2] = zVelocity
+        return if (nedBased) {
+            // TODO why???
+            //  xVelocity, yVelocity, and zVelocity are ground coordinate system based, why do I apply the headset attitude to the velocities?
+            val angle = Math.toRadians(360 - headsetOrientation)
+            // x'
+            xyzVelocity[0] = xVelocity * cos(angle) - yVelocity * sin(angle)
+            xyzVelocity[1] = xVelocity * sin(angle) + yVelocity * cos(angle)
+            xyzVelocity[2] = zVelocity
 
-        Timber.d("Velocity in X/Y/Z axes: ${xyzVelocity[0].format(4)} / ${xyzVelocity[1].format(4)} / ${xyzVelocity[2].format(4)}")
+            Timber.d(
+                "Velocity in X/Y/Z axes: ${xyzVelocity[0].format(4)} / ${xyzVelocity[1].format(4)} / ${
+                    xyzVelocity[2].format(
+                        4
+                    )
+                }"
+            )
 
-        val result = positionMonitor.convertCoordinateToNED(xyzVelocity)
-        Timber.d("Velocity in N/E/D axes: ${result[0].format(4)} / ${result[1].format(4)} / ${result[2].format(4)}")
-
-        // TODO for debug, only returns 0
-//        return arrayOf(result[0], 0.0, 0.0).toDoubleArray()
-        return result
+            val result = positionMonitor.convertCoordinateToNED(xyzVelocity)
+            Timber.d(
+                "Velocity in N/E/D axes: ${result[0].format(4)} / ${result[1].format(4)} / ${
+                    result[2].format(
+                        4
+                    )
+                }"
+            )
+            result
+        } else {
+            val result = positionMonitor.convertCoordinateToBody(xyzVelocity)
+            result
+        }
     }
 
-    private fun calculateTargetAltitudeInNED(data: ControlStatusData, timeGapInSeconds: Double, monitor: IPositionMonitor): Double? {
+    private fun calculateTargetAltitudeInNED(
+        data: ControlStatusData,
+        timeGapInSeconds: Double,
+        monitor: IPositionMonitor
+    ): Double? {
         return data.currentPosition.y.toDouble()
     }
 
@@ -357,6 +451,7 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
 fun createControlStrategy(controlMode: Int): IControlStrategy {
     return when (controlMode) {
         0 -> ControlViaThumbSticks() // thumbsticks
+        1 -> ControlViaHeadset(1000L / SENDING_FREQUENCY, false)
         else -> ControlViaHeadset(1000L / SENDING_FREQUENCY) // headset
     }
 }

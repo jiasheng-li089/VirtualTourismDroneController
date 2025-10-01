@@ -267,12 +267,13 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         binding.rvStatus.adapter = StatusAdapter(this)
 
         binding.spinnerControlMode.adapter = object: BaseAdapter() {
-            override fun getCount() = 2
+            override fun getCount() = 3
 
             override fun getItem(position: Int): Any? {
                 return when(position) {
                     0 -> "Thumbsticks"
-                    else -> "Headset"
+                    1 -> "Headset_Body_Based"
+                    else -> "Headset_NED_Based"
                 }
             }
 

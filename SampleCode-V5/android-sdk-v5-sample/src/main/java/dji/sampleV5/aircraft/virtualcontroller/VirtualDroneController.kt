@@ -2,7 +2,6 @@ package dji.sampleV5.aircraft.virtualcontroller
 
 import android.util.Log
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
-import dji.sampleV5.aircraft.currentEFence
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.utils.toJson
 import dji.sdk.keyvalue.key.FlightControllerKey
@@ -228,7 +227,7 @@ class VirtualDroneController(
             }
         } else {
             super.switchDroneStatus(false)
-            adjustDroneVelocityOneTime(0.0, 0.0, null)
+            adjustDroneVelocityOneTimeNED(0.0, 0.0, null)
             changeVirtualStickStatus(enable = false, syncAdvancedParam = true, null)
             positionMonitor?.stop()
             positionMonitor = null
