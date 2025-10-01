@@ -43,36 +43,40 @@ open class BaseDroneSpatialPositionMonitor () {
 
     protected var currentOrientation: Double = Double.NaN
 
+    protected var benchmarkOrientation: Double = Double.NaN
+
     fun innerConvertCoordinateToNED(xyzVelocities: DoubleArray): DoubleArray {
-        val velocities = xyzVelocities.copyOf(xyzVelocities.size)
+        val nedVelocities = xyzVelocities.copyOf(xyzVelocities.size)
 
         // conversion:
         //              x maps to east
         //              y maps to north
         // x' = x cos θ - y sin θ
         // y' = x sin θ + y cos θ
+        var targetAngle =  (((- (currentOrientation - benchmarkOrientation)) + 360) % 360).toRadians()
+        var xVelocityBody = xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle)
+        var yVelocityBody = xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle)
 
-        var targetAngle = if (currentOrientation >= 0)
-            currentOrientation
-        else
-            360 + currentOrientation
+
+        targetAngle = (360.0 + currentOrientation) % 360
         targetAngle = targetAngle.toRadians()
+        // x'
+        val xVelocityNED = (xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle))
+        // y'
+        val yVelocityNED = (xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle))
 
-        // velocity in north, which is y'
-        velocities[0] = (xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle))
+//
+//        targetAngle = 90.0.toRadians()
+//        val tmpX = - (velocities[1] * cos(targetAngle) - velocities[0] * sin(targetAngle))
+//        val tmpY = - (velocities[1] * sin(targetAngle) + velocities[0] * cos(targetAngle))
+//        velocities[0] = tmpY
+//        velocities[1] = tmpX
 
-        // velocity in east, which is x'
-        velocities[1] = (xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle))
+        nedVelocities[0] = yVelocityNED
+        nedVelocities[1] = xVelocityNED
+        nedVelocities[2] = xyzVelocities[2]
 
-        targetAngle = 90.0.toRadians()
-        val tmpX = - (velocities[1] * cos(targetAngle) - velocities[0] * sin(targetAngle))
-        val tmpY = - (velocities[1] * sin(targetAngle) + velocities[0] * cos(targetAngle))
-        velocities[0] = tmpY
-        velocities[1] = tmpX
-
-        velocities[2] = xyzVelocities[2]
-
-        return velocities
+        return nedVelocities
     }
 
     private fun Double.toRadians() = Math.toRadians(this)
@@ -91,8 +95,6 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
     // 90 means the drone is toward East,
     // -90 means the drone is toward West
     // 180 and -180 means the drone is toward South
-    private var benchmarkOrientation: Double = Double.NaN
-
     private val attitudeKey = FlightControllerKey.KeyAircraftAttitude
 
     private val velocityKey = FlightControllerKey.KeyAircraftVelocity
@@ -113,8 +115,6 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         benchmarkOrientation = Double.NaN
         currentOrientation = Double.NaN
     }
-
-    private fun Double.NED2CSC() = (this + 180).normalizeToSCS()
 
     private fun updateVelocities(velocities: Velocity3D) {
         if (0L == lastPositionUpdateTime) return

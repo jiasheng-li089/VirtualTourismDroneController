@@ -287,15 +287,15 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
         val xyzVelocity = DoubleArray(3)
 
         // INFO in unity, the z axis means forward/backward, the x axis means right/left, and the y axis means upward/downward
-        val xDiffInXYZ = currentPosition.x - lastPosition.x
-        val yDiffInXYZ = currentPosition.z - lastPosition.z
-        val zDiffInXYZ = currentPosition.y - lastPosition.y
+        val xDistance = currentPosition.x - lastPosition.x
+        val yDistance = currentPosition.z - lastPosition.z
+        val zDistance = currentPosition.y - lastPosition.y
 
-        Timber.d("Position change in X/Y/Z: ${xDiffInXYZ.format(4)} / ${yDiffInXYZ.format(4)} / ${zDiffInXYZ.format(4)}")
+        Timber.d("Position change in X/Y/Z: ${xDistance.format(4)} / ${yDistance.format(4)} / ${zDistance.format(4)}")
 
-        val xVelocity = xDiffInXYZ / gapTimestamp * HEADSET_MOVEMENT_SCALE
-        val yVelocity = yDiffInXYZ / gapTimestamp * HEADSET_MOVEMENT_SCALE
-        val zVelocity = zDiffInXYZ / gapTimestamp * HEADSET_MOVEMENT_SCALE
+        val xVelocity = xDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
+        val yVelocity = yDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
+        val zVelocity = zDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
 
         val angle = Math.toRadians(360 - headsetOrientation)
         // x'
