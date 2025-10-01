@@ -2,11 +2,10 @@ package dji.sampleV5.aircraft.virtualcontroller
 
 import android.os.SystemClock
 import dji.sampleV5.aircraft.HEADSET_MOVEMENT_SCALE
-import dji.sampleV5.aircraft.MAXIMUM_ROTATION_VELOCITY
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
+import dji.sampleV5.aircraft.THUMBSTICK_CONTROL_SCALE
 import dji.sampleV5.aircraft.VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
-import dji.sampleV5.aircraft.currentControlScaleConfiguration
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.models.Vector3D
 import dji.sampleV5.aircraft.utils.format
@@ -142,26 +141,22 @@ class ControlViaThumbSticks() : IControlStrategy {
 
         VirtualStickManager.getInstance().leftStick.let {
             // rotation
-            it.horizontalPosition = (mappingValues(data.leftThumbStickValue.x)
-                    / currentControlScaleConfiguration.scale.left_horizontal).toInt()
+            it.horizontalPosition = mappingValues(data.leftThumbStickValue.x).toInt()
             // upward and downward
-            it.verticalPosition = (mappingValues(data.leftThumbStickValue.y)
-                    / currentControlScaleConfiguration.scale.left_vertical).toInt()
+            it.verticalPosition = mappingValues(data.leftThumbStickValue.y).toInt()
         }
         VirtualStickManager.getInstance().rightStick?.let {
             // left and right
-            it.horizontalPosition = (mappingValues(data.rightThumbStickValue.x)
-                    / currentControlScaleConfiguration.scale.right_horizontal).toInt()
+            it.horizontalPosition = mappingValues(data.rightThumbStickValue.x).toInt()
             // forward and backward
-            it.verticalPosition = (mappingValues(data.rightThumbStickValue.y)
-                    / currentControlScaleConfiguration.scale.right_vertical).toInt()
+            it.verticalPosition = mappingValues(data.rightThumbStickValue.y).toInt()
         }
     }
 
     fun mappingValues(input: Float): Float {
         val tmp = input.toDouble().pow(5.0)
 
-        return (tmp * Stick.MAX_STICK_POSITION_ABS).toFloat()
+        return (tmp * Stick.MAX_STICK_POSITION_ABS).toFloat() * THUMBSTICK_CONTROL_SCALE
     }
 
     override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
@@ -330,15 +325,12 @@ class ControlViaHeadset(private val updateVelocityInterval: Long) : IControlStra
         // calculate if the difference between current angle and target one is too large
         // check if go around the shortest path, it still exceed the maximum rotation velocity
 
-        // TODO remove the maximum speed limitation, the rotation data has been smoothed on the headset side
-        val maximumAngleChange = MAXIMUM_ROTATION_VELOCITY * timeGapInSeconds
         // only log when changes need to be applied
         Timber.d(
             buildString {
                 append("Drone current orientation: $currentAngleInSCS, ")
                 append("Headset current orientation: $targetAngleInSCS, ")
                 append("Shortest angle is: $shortestAngle, ")
-                append("Maximum angle change: $maximumAngleChange")
             }
         )
 

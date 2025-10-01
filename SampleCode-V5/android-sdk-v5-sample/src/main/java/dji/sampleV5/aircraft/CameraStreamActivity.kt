@@ -29,7 +29,6 @@ import dji.sampleV5.aircraft.databinding.ActivityCameraStreamBinding
 import dji.sampleV5.aircraft.models.CameraStreamVM
 import dji.sampleV5.aircraft.utils.BaseViewHolder
 import dji.sampleV5.aircraft.utils.format
-import dji.sampleV5.aircraft.utils.getControlStickScaleConfiguration
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
@@ -303,17 +302,24 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 position: Int,
                 id: Long
             ) {
-                binding.spinnerControlScaleConfiguration.visibility = if (position == 0) View.VISIBLE else View.GONE
                 viewModel.remoteControlMode.postValue(position)
+                if (position == 0) {
+                    // thumbstick
+                    binding.thumbstickControlScaleSlider.visibility = View.VISIBLE
+                    binding.positionChangeVelocityScale.visibility = View.GONE
+                } else {
+                    binding.thumbstickControlScaleSlider.visibility = View.GONE
+                    binding.positionChangeVelocityScale.visibility = View.VISIBLE
+                }
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {
             }
         }
 
-        binding.rotationMaximumVelocitySlider.value = MAXIMUM_ROTATION_VELOCITY.toFloat()
-        binding.rotationMaximumVelocitySlider.addOnChangeListener { slider, value, fromUser ->
-            MAXIMUM_ROTATION_VELOCITY = value.toDouble()
+        binding.thumbstickControlScaleSlider.value = THUMBSTICK_CONTROL_SCALE
+        binding.thumbstickControlScaleSlider.addOnChangeListener { slider, value, fromUser ->
+           THUMBSTICK_CONTROL_SCALE  = value
         }
         binding.positionChangeVelocityScale.value = HEADSET_MOVEMENT_SCALE
         binding.positionChangeVelocityScale.addOnChangeListener { _, value, _ ->
@@ -322,52 +328,7 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
         viewModel.remoteControlUIStatus.observe(this) {
             binding.spinnerControlMode.isEnabled = it
-            binding.spinnerControlScaleConfiguration.isEnabled = it
         }
-        val configurations = getControlStickScaleConfiguration(this)
-        binding.spinnerControlScaleConfiguration.adapter = object : BaseAdapter() {
-            override fun getCount() = configurations.size
-
-            override fun getItem(position: Int): Any? = configurations[position]
-
-            override fun getItemId(position: Int) = position.toLong()
-
-            override fun getView(
-                position: Int,
-                convertView: View?,
-                parent: ViewGroup?
-            ): View? {
-                val view = convertView ?: LayoutInflater.from(this@CameraStreamActivity).inflate(R.layout.item_monitoring_status, parent, false)
-                (view as? TextView)?.let {
-                    it.text = configurations[position].name
-                    it.setBackgroundColor(Color.TRANSPARENT)
-                    it.setPadding( resources.getDimensionPixelSize(R.dimen.uxsdk_10_dp))
-                }
-                return view
-            }
-
-        }
-        binding.spinnerControlScaleConfiguration.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: View?,
-                position: Int,
-                id: Long
-            ) {
-                currentControlScaleConfiguration = configurations[position]
-                val msg = "Current control scale configuration is ${currentControlScaleConfiguration.name}:\n${currentControlScaleConfiguration.description}"
-                val msgPair = if ("No_Scale" == currentControlScaleConfiguration.name) {
-                    Pair(Log.ERROR, msg)
-                } else {
-                    Pair(Log.INFO, msg)
-                }
-                appendMessageToUI(msgPair)
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-            }
-        }
-        binding.spinnerControlScaleConfiguration.setSelection(0)
 
         viewModel.initialize(this.application)
 

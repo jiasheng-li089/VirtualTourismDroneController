@@ -23,9 +23,6 @@ const val SENDING_FREQUENCY = 25
 // the orientation data returned from drone is not accurate, need to be calibrated.
 const val COMPASS_OFFSET = 0.toDouble()
 
-// current configuration of the thumb stick control scale factors
-lateinit var currentControlScaleConfiguration: ControlStickScaleConfiguration
-
 // all log with level larger or equals to this level will be stored in log file
 const val MINIMUM_LOG_LEVEL = Log.DEBUG
 
@@ -41,22 +38,11 @@ const val MONITOR_VELOCITY_AND_ORIENTATION_ACTIVELY = true
 // current valid electrical fence
 val currentEFence = RectF(-10f, 10f, 10f, -10f)
 
-data class ScaleFactor(
-    var left_horizontal: Float,
-    var left_vertical: Float,
-    var right_horizontal: Float,
-    var right_vertical: Float
-)
-
-data class ControlStickScaleConfiguration(
-    var name: String, var description: String, var scale: ScaleFactor
-)
-
-// the maximum rotation velocity, in degree
-var MAXIMUM_ROTATION_VELOCITY = 0.0
-
-// the movement of the headset will be apply to the drone after applying this scale
+// the movement of the headset will be applied to the drone after applying this scale
 var HEADSET_MOVEMENT_SCALE = 0.5f
+
+// the value of the thumb sticks will be sent to the drone after applying this scale
+var THUMBSTICK_CONTROL_SCALE = 0.1f
 
 // velocity threshold of warning and ignore
 val VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE = 2.0
