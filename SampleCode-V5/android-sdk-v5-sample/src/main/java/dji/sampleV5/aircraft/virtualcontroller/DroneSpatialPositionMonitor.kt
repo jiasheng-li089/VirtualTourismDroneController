@@ -55,24 +55,10 @@ open class BaseDroneSpatialPositionMonitor () {
         //              y maps to north
         // x' = x cos θ - y sin θ
         // y' = x sin θ + y cos θ
-        var targetAngle =  (((- (currentOrientation - benchmarkOrientation)) + 360) % 360).toRadians()
-        var xVelocityBody = xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle)
-        var yVelocityBody = xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle)
-
-
-        targetAngle = (360.0 + currentOrientation) % 360
-        targetAngle = targetAngle.toRadians()
-        // x'
-        val xVelocityNED = (xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle))
-        // y'
-        val yVelocityNED = (xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle))
-
-//
-//        targetAngle = 90.0.toRadians()
-//        val tmpX = - (velocities[1] * cos(targetAngle) - velocities[0] * sin(targetAngle))
-//        val tmpY = - (velocities[1] * sin(targetAngle) + velocities[0] * cos(targetAngle))
-//        velocities[0] = tmpY
-//        velocities[1] = tmpX
+        // convert GROUND based to NED based
+        val targetAngle = benchmarkOrientation.toRadians()
+        val xVelocityNED = xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle)
+        val yVelocityNED = xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle)
 
         nedVelocities[0] = yVelocityNED
         nedVelocities[1] = xVelocityNED
@@ -90,6 +76,12 @@ open class BaseDroneSpatialPositionMonitor () {
         // x' = x cos θ - y sin θ
         // y' = x sin θ + y cos θ
         var targetAngle = ((- (currentOrientation - benchmarkOrientation)) % 360).toRadians()
+        val xVelocityBody = xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle)
+        val yVelocityBody = xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle)
+
+        bodyVelocities[0] = yVelocityBody
+        bodyVelocities[1] = xVelocityBody
+        bodyVelocities[2] = xyzVelocities[2]
         return bodyVelocities
     }
 

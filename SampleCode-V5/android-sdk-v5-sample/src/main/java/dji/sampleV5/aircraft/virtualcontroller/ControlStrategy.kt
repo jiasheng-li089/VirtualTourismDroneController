@@ -366,14 +366,16 @@ class ControlViaHeadset(
         val yVelocity = yDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
         val zVelocity = zDistance / gapTimestamp * HEADSET_MOVEMENT_SCALE
 
+        xyzVelocity[0] = xVelocity
+        xyzVelocity[1] = yVelocity
+        xyzVelocity[2] = zVelocity
+
         return if (nedBased) {
-            // TODO why???
-            //  xVelocity, yVelocity, and zVelocity are ground coordinate system based, why do I apply the headset attitude to the velocities?
-            val angle = Math.toRadians(360 - headsetOrientation)
-            // x'
-            xyzVelocity[0] = xVelocity * cos(angle) - yVelocity * sin(angle)
-            xyzVelocity[1] = xVelocity * sin(angle) + yVelocity * cos(angle)
-            xyzVelocity[2] = zVelocity
+//            val angle = Math.toRadians(360 - headsetOrientation)
+//            // x'
+//            xyzVelocity[0] = xVelocity * cos(angle) - yVelocity * sin(angle)
+//            xyzVelocity[1] = xVelocity * sin(angle) + yVelocity * cos(angle)
+//            xyzVelocity[2] = zVelocity
 
             Timber.d(
                 "Velocity in X/Y/Z axes: ${xyzVelocity[0].format(4)} / ${xyzVelocity[1].format(4)} / ${
