@@ -39,6 +39,12 @@ import dji.sampleV5.aircraft.webrtc.EVENT_RECEIVED_DATA
 import dji.sampleV5.aircraft.webrtc.VIDEO_PUBLISHER
 import dji.sampleV5.aircraft.webrtc.WebRtcEvent
 import dji.sampleV5.aircraft.webrtc.WebRtcManager
+import dji.sdk.keyvalue.key.CameraKey
+import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.value.camera.VideoFrameRate
+import dji.sdk.keyvalue.value.camera.VideoResolution
+import dji.sdk.keyvalue.value.camera.VideoResolutionFrameRate
+import dji.v5.et.set
 import dji.v5.manager.aircraft.simulator.SimulatorManager
 import dji.v5.manager.aircraft.simulator.SimulatorState
 import dji.v5.manager.aircraft.simulator.SimulatorStatusListener
@@ -157,6 +163,10 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
     private var droneController: IDroneController? = null
 
+    private var videoResolution = 1920 to 1080
+
+    private var videoFrameRate = 30
+
     private val controllerStatusHandleScheduler = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
     fun initialize(application: Application) {
@@ -239,6 +249,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                 }
             emitMonitorStatus(mapOf(result))
         }
+        changeVideoResolutionAndFrameRate()
     }
 
     fun clickPublishBtn() {
@@ -544,7 +555,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             SurfaceTextureHelper.create("CaptureThread", connectionInfo.eglBase.eglBaseContext),
             application, videoSource!!.capturerObserver
         )
-        videoCapturer!!.startCapture(1280, 720, 30)
+        videoCapturer!!.startCapture(videoResolution.first,videoResolution.second, videoFrameRate)
 
         val localVideoTrack =
             connectionInfo.connectionFactory.createVideoTrack("videoTrack", videoSource)
@@ -561,7 +572,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         for (parameter in parameters.encodings) {
             parameter.minBitrateBps = 4500000
             parameter.maxBitrateBps = 6000000
-            parameter.maxFramerate = 60
+            parameter.maxFramerate = videoFrameRate
         }
         sender.parameters = parameters
     }
@@ -598,6 +609,19 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
             }
         }
         return reqPermissions
+    }
+
+    private fun changeVideoResolutionAndFrameRate() {
+        val config = VideoResolutionFrameRate(
+            VideoResolution.RESOLUTION_2688x1512,
+            VideoFrameRate.RATE_60FPS)
+        KeyTools.createKey(CameraKey.KeyVideoResolutionFrameRate).set(config, {
+            showMessageOnLogAndScreen(Log.INFO, "Change video resolution to 2688*1512 and frame rate to 60")
+            videoResolution = 2688 to 1512
+            videoFrameRate = 60
+        }, { error ->
+            showMessageOnLogAndScreen(Log.ERROR, "Fail to change the video resolution and frame rate ${error.errorCode()}: ${error.hint()}")
+        });
     }
 
     private fun controlStatusFeedback(status: String, data: String) {
