@@ -94,3 +94,6 @@ android-sdk-v5-ivt/tools/results/
 
 .idea/
 .userinfo
+
+# python related files
+__pycache__

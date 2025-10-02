@@ -8,6 +8,7 @@ import dji.sampleV5.aircraft.THUMBSTICK_CONTROL_SCALE
 import dji.sampleV5.aircraft.VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.models.Vector3D
+import dji.sampleV5.aircraft.utils.LogLevel
 import dji.sampleV5.aircraft.utils.format
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
@@ -23,9 +24,7 @@ import dji.v5.manager.aircraft.virtualstick.Stick
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import timber.log.Timber
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.pow
-import kotlin.math.sin
 
 
 internal fun initDroneAdvancedParam(): VirtualStickFlightControlParam {
@@ -96,7 +95,7 @@ internal fun adjustDroneVelocityOneTimeBodyBased(
     forwardBackward: Double = 0.0,
     rightLeft: Double = 0.0,
     targetAttitude: Double? = 0.0,
-    height: Double? = null
+    height: Double? = null,
 ) {
     val param = initDroneAdvancedParam()
     if (null == targetAttitude) {
@@ -207,7 +206,7 @@ class ControlViaThumbSticks() : IControlStrategy {
 
 class ControlViaHeadset(
     private val updateVelocityInterval: Long,
-    private val nedBased: Boolean = true
+    private val nedBased: Boolean = true,
 ) : IControlStrategy {
 
     private var positionMonitor: IPositionMonitor? = null
@@ -345,7 +344,7 @@ class ControlViaHeadset(
         currentPosition: Vector3D,
         gapTimestamp: Double,
         headsetOrientation: Double,
-        positionMonitor: IPositionMonitor
+        positionMonitor: IPositionMonitor,
     ): DoubleArray {
         val xyzVelocity = DoubleArray(3)
 
@@ -370,40 +369,30 @@ class ControlViaHeadset(
         xyzVelocity[1] = yVelocity
         xyzVelocity[2] = zVelocity
 
+        Timber.log(
+            LogLevel.VERBOSE_HEADSET_DRONE_VELOCITY_CHANGES,
+            "Headset position changes from (${lastPosition.x.format(4)}, ${lastPosition.z.format(4)}) to (${
+                currentPosition.x.format(
+                    4
+                )
+            }, ${currentPosition.z.format(4)})"
+        )
+        Timber.log(
+            LogLevel.VERBOSE_HEADSET_DRONE_VELOCITY_CHANGES,
+            "Headset velocity is(X/Y): (${xyzVelocity[0].format(4)}, ${xyzVelocity[1].format(4)})"
+        )
+
         return if (nedBased) {
-//            val angle = Math.toRadians(360 - headsetOrientation)
-//            // x'
-//            xyzVelocity[0] = xVelocity * cos(angle) - yVelocity * sin(angle)
-//            xyzVelocity[1] = xVelocity * sin(angle) + yVelocity * cos(angle)
-//            xyzVelocity[2] = zVelocity
-
-            Timber.d(
-                "Velocity in X/Y/Z axes: ${xyzVelocity[0].format(4)} / ${xyzVelocity[1].format(4)} / ${
-                    xyzVelocity[2].format(
-                        4
-                    )
-                }"
-            )
-
-            val result = positionMonitor.convertCoordinateToNED(xyzVelocity)
-            Timber.d(
-                "Velocity in N/E/D axes: ${result[0].format(4)} / ${result[1].format(4)} / ${
-                    result[2].format(
-                        4
-                    )
-                }"
-            )
-            result
+            positionMonitor.convertCoordinateToNED(xyzVelocity)
         } else {
-            val result = positionMonitor.convertCoordinateToBody(xyzVelocity)
-            result
+            positionMonitor.convertCoordinateToBody(xyzVelocity)
         }
     }
 
     private fun calculateTargetAltitudeInNED(
         data: ControlStatusData,
         timeGapInSeconds: Double,
-        monitor: IPositionMonitor
+        monitor: IPositionMonitor,
     ): Double? {
         return data.currentPosition.y.toDouble()
     }

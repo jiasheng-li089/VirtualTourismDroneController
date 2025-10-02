@@ -3,12 +3,15 @@ package dji.sampleV5.aircraft.virtualcontroller
 import android.graphics.RectF
 import android.os.SystemClock
 import dji.sampleV5.aircraft.COMPASS_OFFSET
+import dji.sampleV5.aircraft.utils.LogLevel
+import dji.sampleV5.aircraft.utils.format
 import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.Velocity3D
 import timber.log.Timber
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -41,7 +44,7 @@ interface IPositionMonitor {
     fun stop()
 }
 
-open class BaseDroneSpatialPositionMonitor () {
+open class BaseDroneSpatialPositionMonitor() {
 
     protected var currentOrientation: Double = Double.NaN
 
@@ -60,9 +63,26 @@ open class BaseDroneSpatialPositionMonitor () {
         val xVelocityNED = xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle)
         val yVelocityNED = xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle)
 
+        Timber.log(
+            LogLevel.VERBOSE_HEADSET_DRONE_VELOCITY_CHANGES,
+            "Drone NED (${benchmarkOrientation.format(4)}) velocity is(X/Y): (${
+                xVelocityNED.format(
+                    4
+                )
+            }, ${yVelocityNED.format(4)})"
+        )
+
         nedVelocities[0] = yVelocityNED
         nedVelocities[1] = xVelocityNED
         nedVelocities[2] = xyzVelocities[2]
+
+        val absoluteAngle = abs(benchmarkOrientation)
+        if (45 <= absoluteAngle && absoluteAngle <= 135) {
+            // TODO, it works, but why? why do I need to reverse the velocity when the benchmark angle is in the range from 45 to 135?
+            // it is noting that, this kind of operation is also done on the headset side
+            nedVelocities[0] = -nedVelocities[0]
+            nedVelocities[1] = -nedVelocities[1]
+        }
 
         return nedVelocities
     }
@@ -75,9 +95,19 @@ open class BaseDroneSpatialPositionMonitor () {
         //  y maps to forward
         // x' = x cos θ - y sin θ
         // y' = x sin θ + y cos θ
-        var targetAngle = ((- (currentOrientation - benchmarkOrientation)) % 360).toRadians()
-        val xVelocityBody = xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle)
-        val yVelocityBody = xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle)
+        var targetAngle = ((-(currentOrientation - benchmarkOrientation)) % 360).toRadians()
+        val xVelocityBody =
+            xyzVelocities[0] * cos(targetAngle) - xyzVelocities[1] * sin(targetAngle)
+        val yVelocityBody =
+            xyzVelocities[0] * sin(targetAngle) + xyzVelocities[1] * cos(targetAngle)
+        Timber.log(
+            LogLevel.VERBOSE_HEADSET_DRONE_VELOCITY_CHANGES,
+            "Drone BODY (${currentOrientation.format(4)}, ${benchmarkOrientation.format(4)}) velocity is(X/Y): (${
+                xVelocityBody.format(
+                    4
+                )
+            }, ${yVelocityBody.format(4)})"
+        )
 
         bodyVelocities[0] = yVelocityBody
         bodyVelocities[1] = xVelocityBody
@@ -88,7 +118,10 @@ open class BaseDroneSpatialPositionMonitor () {
     private fun Double.toRadians() = Math.toRadians(this)
 }
 
-open class DroneSpatialPositionMonitor (private var observable: RawDataObservable, private val statusUpdater: StatusUpdater?): BaseDroneSpatialPositionMonitor(), OnRawDataObserver, IPositionMonitor {
+open class DroneSpatialPositionMonitor(
+    private var observable: RawDataObservable,
+    private val statusUpdater: StatusUpdater?,
+) : BaseDroneSpatialPositionMonitor(), OnRawDataObserver, IPositionMonitor {
 
     private var x: Double = 0.0
 
@@ -135,14 +168,14 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         // position change around z axis is straightforward enough
         z += velocityAroundDownloadSide * timeDifference / 1000f
 
-        var velocityAroundY = - velocityAroundNorth * cos(benchmarkOrientation)
+        var velocityAroundY = -velocityAroundNorth * cos(benchmarkOrientation)
 
         // TODO still need to figure out in which direction the drone will return positive value for benchmark
         // it decides `+` or `-` should be used in the next statement,
         // for now assume on the right side of north, it will return positive, so `+` is used in below statement
         velocityAroundY += velocityAroundEast * sin(benchmarkOrientation)
 
-        var velocityAroundX = - velocityAroundEast * cos(benchmarkOrientation)
+        var velocityAroundX = -velocityAroundEast * cos(benchmarkOrientation)
         // TODO same problem as above one
         velocityAroundX += velocityAroundNorth * sin(benchmarkOrientation)
 
@@ -151,7 +184,10 @@ open class DroneSpatialPositionMonitor (private var observable: RawDataObservabl
         x += velocityAroundX * timeDifference / 1000f
         lastPositionUpdateTime += timeDifference
 
-        statusUpdater?.invoke("Drone Velocity (X/Y/Z)", "$velocityAroundX / $velocityAroundY / $velocityAroundDownloadSide")
+        statusUpdater?.invoke(
+            "Drone Velocity (X/Y/Z)",
+            "$velocityAroundX / $velocityAroundY / $velocityAroundDownloadSide"
+        )
         statusUpdater?.invoke("Drone Position (X/Y/Z)", "$x / $y / $z")
         lastVelocities = velocities
     }
@@ -251,24 +287,27 @@ class DroneSpatialPositionMonitorWithEFence(
     private val fence: RectF,
     private val updateVelocityInterval: Long,
     observable: RawDataObservable,
-    statusUpdater: StatusUpdater?
-): DroneSpatialPositionMonitor(observable, statusUpdater) {
+    statusUpdater: StatusUpdater?,
+) : DroneSpatialPositionMonitor(observable, statusUpdater) {
 
     override fun convertCoordinateToNED(xyzVelocities: DoubleArray): DoubleArray {
         val updateIntervalInSeconds = updateVelocityInterval / 1000.0
         // modify the velocities around x and y axes to avoid flying out of the electrical fence
         // x
         if (xyzVelocities[0] > 0) {
-            xyzVelocities[0] = min((fence.right - getX()) / updateIntervalInSeconds, xyzVelocities[0])
+            xyzVelocities[0] =
+                min((fence.right - getX()) / updateIntervalInSeconds, xyzVelocities[0])
         } else {
-            xyzVelocities[0] = max((fence.left - getX()) / updateIntervalInSeconds, xyzVelocities[0])
+            xyzVelocities[0] =
+                max((fence.left - getX()) / updateIntervalInSeconds, xyzVelocities[0])
         }
 
         // y
         if (xyzVelocities[1] > 0) {
             xyzVelocities[1] = min((fence.top - getY()) / updateIntervalInSeconds, xyzVelocities[1])
         } else {
-            xyzVelocities[1] = max((fence.bottom - getY()) / updateIntervalInSeconds, xyzVelocities[1])
+            xyzVelocities[1] =
+                max((fence.bottom - getY()) / updateIntervalInSeconds, xyzVelocities[1])
         }
 
         return super.convertCoordinateToNED(xyzVelocities)

@@ -26,9 +26,15 @@ open class DJIApplication : Application() {
 
     private val msdkManagerVM: MSDKManagerVM by globalViewModels()
 
-    private var tree: FileLoggingTree? = null
+    private val logConfig = listOf(
+        MINIMUM_LOG_LEVEL to null,
+        LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY to "velocity_changes_",
+        LogLevel.VERBOSE_HEADSET_DRONE_VELOCITY_CHANGES to "drone_headset_velocity_changes_"
+    )
 
-    private var velocityLogTree: FileLoggingTree? = null
+    private val logTrees = ArrayList<Timber.Tree>(
+        logConfig.size,
+    )
 
     override fun onCreate() {
         super.onCreate()
@@ -37,33 +43,49 @@ open class DJIApplication : Application() {
         // Ensure initialization is called first
         msdkManagerVM.initMobileSDK(this)
 
+        initializeLog()
+    }
+
+    private fun initializeLog() {
         val file = File(this.getExternalFilesDir(null), "LOG")
         if (!file.exists()) {
             file.mkdirs()
         }
-        val logSuffix = "${SimpleDateFormat("yyyy_MM_dd_HH_mm", Locale.getDefault()).format(
-            Date()
-        )}.log"
-        logFile = File(file, logSuffix)
-        velocityLogFile = File(file, "velocity_changes_$logSuffix")
+        val logSuffix = "${
+            SimpleDateFormat("yyyy_MM_dd_HH_mm", Locale.getDefault()).format(
+                Date()
+            )
+        }.log"
 
-        tree = FileLoggingTree(logFile, targetLevel = MINIMUM_LOG_LEVEL)
-        velocityLogTree = ExactLevelLoggingTree(velocityLogFile, LogLevel.VERBOSE_DRONE_VELOCITY_READ_ACTIVELY)
+        for (config in logConfig) {
+            val targetFile =
+                if (!isLogInitialized() && (null == config.second)) {
+                    logFile = File(file, logSuffix)
+                    logFile
+                } else {
+                    File(file, "${config.second}${logSuffix}")
+                }
+            val tree = if (null == config.second) FileLoggingTree(
+                targetFile,
+                config.first
+            ) else ExactLevelLoggingTree(targetFile, config.first)
+            logTrees.add(tree)
+            Timber.plant(tree)
+        }
 
-        Timber.plant(tree!!)
-        Timber.plant(velocityLogTree!!)
-
-        Thread.setDefaultUncaughtExceptionHandler { thread, e->
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
             Timber.e(e)
             destroyLog()
         }
     }
 
     private fun destroyLog() {
-        tree?.destroy()
-        velocityLogTree?.destroy()
-
         Timber.uprootAll()
+
+        for (tree in logTrees) {
+            (tree as? FileLoggingTree)?.destroy()
+        }
+        logTrees.clear()
     }
 
     override fun onTerminate() {
@@ -75,10 +97,10 @@ open class DJIApplication : Application() {
 
         private lateinit var logFile: File
 
-        private lateinit var velocityLogFile: File
-
         @SuppressLint("StaticFieldLeak")
         private lateinit var context: Context
+
+        private fun isLogInitialized() = ::logFile.isInitialized
 
         fun getLogFile(): File {
             return logFile
