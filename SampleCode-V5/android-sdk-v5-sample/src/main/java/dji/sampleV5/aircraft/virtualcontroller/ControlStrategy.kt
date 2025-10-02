@@ -133,7 +133,7 @@ private fun adjustCameraOrientation(riseSet: Double, roll: Double) {
     param.roll = roll
     param.yaw = 0.0
     param.mode = GimbalAngleRotationMode.ABSOLUTE_ANGLE
-    param.duration = 1.0
+    param.duration = 0.3
 
     KeyTools.createKey(GimbalKey.KeyRotateByAngle).action(param, { result ->
         Timber.d("Rotate the gimbal successfully: $riseSet")
@@ -329,8 +329,18 @@ class ControlViaHeadset(
                 } else {
                     null
                 }
-            targetAngle?.let {
-                adjustCameraOrientation(it.toDouble(), 0.0)
+            val currentRollAngle = data.currentRotation.z
+            val targetRollAngle = if (currentRollAngle >= 0 && currentRollAngle <= 90) {
+                - currentRollAngle
+            } else if (currentRollAngle >= 90 && currentRollAngle < 360) {
+                360 - currentRollAngle
+            } else {
+                null
+            }
+            targetAngle?.let { riseSet ->
+                targetRollAngle?.let { roll ->
+                    adjustCameraOrientation(riseSet.toDouble(), roll.toDouble())
+                }
             }
 
 //            // update last valid sample time
