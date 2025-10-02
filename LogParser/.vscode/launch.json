@@ -13,6 +13,14 @@
             "args": [
                 "23_14_29"
             ]
+        },
+        {
+            "name": "Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}"
         }
     ]
 }
