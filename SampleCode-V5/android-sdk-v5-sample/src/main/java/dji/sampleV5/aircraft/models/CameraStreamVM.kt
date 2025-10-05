@@ -192,6 +192,9 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
                     // log only when value changes
                     Timber.d("If the drone is ready: ${controller.isDroneReady()}")
                     isDroneReady = controller.isDroneReady()
+
+                    abortBtnStatus.postValue(isDroneReady)
+                    getReadyStatus.postValue(!isDroneReady)
                 }
                 emitMonitorStatus(
                     mapOf(
@@ -273,6 +276,8 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
         webRtcManager.start()
 
         publishBtnStatus.postValue(false)
+        getReadyStatus.postValue(true)
+        abortBtnStatus.postValue(false)
         stopBtnStatus.postValue(true)
     }
 
@@ -290,6 +295,7 @@ class CameraStreamVM : ViewModel(), Consumer<WebRtcEvent>, SimulatorStatusListen
 
         getReadyStatus.postValue(false)
         publishBtnStatus.postValue(true)
+        abortBtnStatus.postValue(false)
         stopBtnStatus.postValue(false)
 
         showMessageOnLogAndScreen(Log.INFO, "Stop publishing video.")

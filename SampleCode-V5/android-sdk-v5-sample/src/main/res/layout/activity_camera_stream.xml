@@ -70,21 +70,21 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
-            android:text="Stop Publish" />
+            android:text="Stop Publishing" />
 
         <Button
             android:id="@+id/btn_get_ready_to_control"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal|bottom"
-            android:text="Get Ready to remote control" />
+            android:text="Start remote control" />
 
         <Button
             android:id="@+id/btn_abort_remote_control"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal|bottom"
-            android:text="Abort Remote control" />
+            android:text="Stop Remote control" />
 
         <Button
             android:id="@+id/btn_land_off"
