@@ -5,6 +5,8 @@ import dji.sampleV5.aircraft.HEADSET_MOVEMENT_SCALE
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
 import dji.sampleV5.aircraft.THUMBSTICK_CONTROL_SCALE
+import dji.sampleV5.aircraft.THUMBSTICK_ROTATION_SCALE
+import dji.sampleV5.aircraft.THUMBSTICK_UPDOWN_SCALE
 import dji.sampleV5.aircraft.VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE
 import dji.sampleV5.aircraft.models.ControlStatusData
 import dji.sampleV5.aircraft.models.Vector3D
@@ -24,6 +26,7 @@ import dji.v5.manager.aircraft.virtualstick.Stick
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import timber.log.Timber
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.pow
 
 
@@ -165,9 +168,14 @@ interface IControlStrategy {
 }
 
 class ControlViaThumbSticks() : IControlStrategy {
+
+    init {
+        Timber.d("Create control strategy for thumb sticks")
+    }
+
     override fun isVirtualStickNeeded() = true
 
-    override fun isVirtualStickAdvancedParamNeeded() = TEST_VIRTUAL_STICK_ADVANCED_PARAM
+    override fun isVirtualStickAdvancedParamNeeded() = false
 
     private var currentValidStatusTimestamp = 0L
 
@@ -180,22 +188,25 @@ class ControlViaThumbSticks() : IControlStrategy {
 
         VirtualStickManager.getInstance().leftStick.let {
             // rotation
-            it.horizontalPosition = mappingValues(data.leftThumbStickValue.x).toInt()
+            it.horizontalPosition = (mappingValues(data.leftThumbStickValue.x) * THUMBSTICK_ROTATION_SCALE).toInt()
             // upward and downward
-            it.verticalPosition = mappingValues(data.leftThumbStickValue.y).toInt()
+            it.verticalPosition = (mappingValues(data.leftThumbStickValue.y) * THUMBSTICK_UPDOWN_SCALE).toInt()
         }
         VirtualStickManager.getInstance().rightStick?.let {
             // left and right
-            it.horizontalPosition = mappingValues(data.rightThumbStickValue.x).toInt()
+            it.horizontalPosition = (mappingValues(data.rightThumbStickValue.x) * THUMBSTICK_CONTROL_SCALE).toInt()
             // forward and backward
-            it.verticalPosition = mappingValues(data.rightThumbStickValue.y).toInt()
+            it.verticalPosition = (mappingValues(data.rightThumbStickValue.y) * THUMBSTICK_CONTROL_SCALE).toInt()
         }
     }
 
     fun mappingValues(input: Float): Float {
-        val tmp = input.toDouble().pow(5.0)
+        val s = 7
+        var tmp = (exp((10 - s) * abs(input)) - 1) / (exp(10 - s.toFloat()) - 1)
+        if (input < 0)
+            tmp *= -1
 
-        return (tmp * Stick.MAX_STICK_POSITION_ABS).toFloat() * THUMBSTICK_CONTROL_SCALE
+        return (tmp * Stick.MAX_STICK_POSITION_ABS)
     }
 
     override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
@@ -208,6 +219,10 @@ class ControlViaHeadset(
     private val updateVelocityInterval: Long,
     private val nedBased: Boolean = true,
 ) : IControlStrategy {
+
+    init {
+        Timber.d("Create control strategy for headset")
+    }
 
     private var positionMonitor: IPositionMonitor? = null
 

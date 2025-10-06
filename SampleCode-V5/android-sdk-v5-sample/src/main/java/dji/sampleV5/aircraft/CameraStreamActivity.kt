@@ -307,9 +307,13 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 if (position == 0) {
                     // thumbstick
                     binding.thumbstickControlScaleSlider.visibility = View.VISIBLE
+                    binding.thumbstickRotationScaleSlider.visibility = View.VISIBLE
+                    binding.thumbstickUpdownScaleSlider.visibility = View.VISIBLE
                     binding.positionChangeVelocityScale.visibility = View.GONE
                 } else {
                     binding.thumbstickControlScaleSlider.visibility = View.GONE
+                    binding.thumbstickRotationScaleSlider.visibility = View.GONE
+                    binding.thumbstickUpdownScaleSlider.visibility = View.GONE
                     binding.positionChangeVelocityScale.visibility = View.VISIBLE
                 }
             }
@@ -321,6 +325,14 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
         binding.thumbstickControlScaleSlider.value = THUMBSTICK_CONTROL_SCALE
         binding.thumbstickControlScaleSlider.addOnChangeListener { slider, value, fromUser ->
            THUMBSTICK_CONTROL_SCALE  = value
+        }
+        binding.thumbstickRotationScaleSlider.value = THUMBSTICK_ROTATION_SCALE
+        binding.thumbstickRotationScaleSlider.addOnChangeListener { slider, value, fromUser ->
+            THUMBSTICK_ROTATION_SCALE = value
+        }
+        binding.thumbstickUpdownScaleSlider.value = THUMBSTICK_UPDOWN_SCALE
+        binding.thumbstickUpdownScaleSlider.addOnChangeListener { slider, value, fromUser ->
+            THUMBSTICK_UPDOWN_SCALE = value
         }
         binding.positionChangeVelocityScale.value = HEADSET_MOVEMENT_SCALE
         binding.positionChangeVelocityScale.addOnChangeListener { _, value, _ ->

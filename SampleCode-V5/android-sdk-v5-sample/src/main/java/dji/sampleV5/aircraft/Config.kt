@@ -39,10 +39,16 @@ const val MONITOR_VELOCITY_AND_ORIENTATION_ACTIVELY = true
 val currentEFence = RectF(-10f, 10f, 10f, -10f)
 
 // the movement of the headset will be applied to the drone after applying this scale
-var HEADSET_MOVEMENT_SCALE = 0.5f
+var HEADSET_MOVEMENT_SCALE = 0.8f
 
-// the value of the thumb sticks will be sent to the drone after applying this scale
-var THUMBSTICK_CONTROL_SCALE = 0.1f
+// the value of the thumb sticks will be sent to the drone after applying this scale to control
+var THUMBSTICK_CONTROL_SCALE = 0.02f
+
+// the value of the thumb sticks will be sent to the drone after applying this scale to up & down control
+var THUMBSTICK_UPDOWN_SCALE = 0.1f
+
+// the value of the thumb sticks will be sent to the drone after applying this scale to rotation
+var THUMBSTICK_ROTATION_SCALE = 0.2f
 
 // velocity threshold of warning and ignore
 val VELOCITY_THRESHOLD_OF_WARNING_AND_IGNORE = 2.0
