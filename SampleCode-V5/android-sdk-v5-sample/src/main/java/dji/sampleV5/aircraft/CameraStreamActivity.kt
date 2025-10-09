@@ -215,6 +215,7 @@ class CameraStreamActivity : AppCompatActivity(), SurfaceHolder.Callback {
             btn.setOnClickListener { view->
                 viewModel.flightToDirection(btn.id)
             }
+            btn.visibility = View.GONE
         }
         binding.imgScrollToBottom.setOnClickListener {
             (binding.rvMessage.layoutManager as? LinearLayoutManager)?.scrollToPosition(

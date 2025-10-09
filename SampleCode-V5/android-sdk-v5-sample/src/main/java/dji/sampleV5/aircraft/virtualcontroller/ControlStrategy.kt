@@ -2,6 +2,7 @@ package dji.sampleV5.aircraft.virtualcontroller
 
 import android.os.SystemClock
 import dji.sampleV5.aircraft.HEADSET_MOVEMENT_SCALE
+import dji.sampleV5.aircraft.MAXIMUM_HEIGHT_FOR_THUMBSTICK_CONTROL
 import dji.sampleV5.aircraft.SENDING_FREQUENCY
 import dji.sampleV5.aircraft.TEST_VIRTUAL_STICK_ADVANCED_PARAM
 import dji.sampleV5.aircraft.THUMBSTICK_CONTROL_SCALE
@@ -167,11 +168,13 @@ interface IControlStrategy {
     fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?)
 }
 
-class ControlViaThumbSticks() : IControlStrategy {
+class ControlViaThumbSticks(private val maximumHeight: Double) : IControlStrategy {
 
     init {
         Timber.d("Create control strategy for thumb sticks")
     }
+
+    private var monitor: IPositionMonitor? = null
 
     override fun isVirtualStickNeeded() = true
 
@@ -190,7 +193,12 @@ class ControlViaThumbSticks() : IControlStrategy {
             // rotation
             it.horizontalPosition = (mappingValues(data.leftThumbStickValue.x) * THUMBSTICK_ROTATION_SCALE).toInt()
             // upward and downward
-            it.verticalPosition = (mappingValues(data.leftThumbStickValue.y) * THUMBSTICK_UPDOWN_SCALE).toInt()
+            if (null != monitor && monitor!!.getZ() >= maximumHeight && data.leftThumbStickValue.y > 0) {
+                it.verticalPosition = 0
+            } else {
+                it.verticalPosition =
+                    (mappingValues(data.leftThumbStickValue.y) * THUMBSTICK_UPDOWN_SCALE).toInt()
+            }
         }
         VirtualStickManager.getInstance().rightStick?.let {
             // left and right
@@ -211,7 +219,7 @@ class ControlViaThumbSticks() : IControlStrategy {
 
     override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
         // it does not matter, even with position monitor, it is still impossible to achieve accurate control through thumbsticks
-
+        this.monitor = monitor
     }
 }
 
@@ -462,11 +470,13 @@ class ControlViaHeadset(
     override fun updateDroneSpatialPositionMonitor(monitor: IPositionMonitor?) {
         this.positionMonitor = monitor
     }
+
 }
+
 
 fun createControlStrategy(controlMode: Int): IControlStrategy {
     return when (controlMode) {
-        0 -> ControlViaThumbSticks() // thumbsticks
+        0 -> ControlViaThumbSticks(MAXIMUM_HEIGHT_FOR_THUMBSTICK_CONTROL) // thumbsticks
         1 -> ControlViaHeadset(1000L / SENDING_FREQUENCY, false)
         else -> ControlViaHeadset(1000L / SENDING_FREQUENCY) // headset
     }

@@ -140,6 +140,8 @@ open class DroneSpatialPositionMonitor(
 
     private val gimbalAttitudeKey = GimbalKey.KeyGimbalAttitude
 
+    private val ultrasoundHeight = FlightControllerKey.KeyUltrasonicHeight
+
     private var lastPositionUpdateTime = 0L
 
     private var lastVelocities: Velocity3D = Velocity3D(0.0, 0.0, 0.0)
@@ -166,7 +168,7 @@ open class DroneSpatialPositionMonitor(
         val velocityAroundDownloadSide = (velocities.z + lastVelocities.z) / 2
 
         // position change around z axis is straightforward enough
-        z += velocityAroundDownloadSide * timeDifference / 1000f
+//        z += velocityAroundDownloadSide * timeDifference / 1000f
 
         var velocityAroundY = -velocityAroundNorth * cos(benchmarkOrientation)
 
@@ -209,6 +211,10 @@ open class DroneSpatialPositionMonitor(
         this.currentGimbalAttitude = attitude
     }
 
+    private fun updateHeight(height: Float) {
+        this.z = height.toDouble()
+    }
+
     override fun convertCoordinateToNED(velocitiesInSCS: DoubleArray): DoubleArray {
         return super.innerConvertCoordinateToNED(velocitiesInSCS)
     }
@@ -239,12 +245,14 @@ open class DroneSpatialPositionMonitor(
         observable.register(attitudeKey, this)
         observable.register(velocityKey, this)
         observable.register(gimbalAttitudeKey, this)
+        observable.register(ultrasoundHeight, this)
     }
 
     override fun stop() {
         observable.unregister(attitudeKey, this)
         observable.unregister(velocityKey, this)
         observable.unregister(gimbalAttitudeKey, this)
+        observable.unregister(ultrasoundHeight, this)
     }
 
     override fun invoke(p1: DJIKeyInfo<*>, p2: Any?) {
@@ -256,6 +264,8 @@ open class DroneSpatialPositionMonitor(
             (p2 as? Attitude)?.let { updateAttitude(it) }
         } else if (p1.innerIdentifier.equals(gimbalAttitudeKey.innerIdentifier)) {
             (p2 as? Attitude)?.let { updateGimbalAttitude(it) }
+        } else if (p1.innerIdentifier.equals(ultrasoundHeight.innerIdentifier)) {
+            (p2 as? Int)?.let { updateHeight(it / 10f) }
         }
     }
 
