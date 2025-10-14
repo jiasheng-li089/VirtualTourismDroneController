@@ -144,6 +144,10 @@ abstract class DJIMainActivity : AppCompatActivity() {
                 msdkInfoVm.clickSimulatorMode(loc.latitude, loc.longitude)
             }
         }
+        binding.cbUseDroneCamera.isChecked = USE_DRONE_CAMERA
+        binding.cbUseDroneCamera.setOnCheckedChangeListener { buttonView, isChecked ->
+            USE_DRONE_CAMERA = isChecked
+        }
     }
 
     override fun onRequestPermissionsResult(
