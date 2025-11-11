@@ -36,22 +36,24 @@ def read_data_from_files(target_dir: PathLike | str, group_files: tuple) -> dict
     return result
 
 
-def test_if_data_normally_distributed(dataset: dict, dimension: str):
+def test_if_data_normally_distributed(
+    dataset: dict, dimension: str
+) -> tuple[bool, dict]:
     print(f"Shapiro test for {dimension}:")
 
+    all_normally_distributed = True
+    result = {}
     for group_name, group_value in dataset.items():
         stat, p = shapiro(group_value[dimension])
         print(
             f"Group and dimension: {group_name} - {dimension}: W={stat:3f}, p={p:.3f}"
         )
-        if p > 0.05:
-            print(f"{group_name} - {dimension} -> is normal")
-        else:
-            print(f"{group_name} - {dimension} -> is NOT normal")
-    print("")
+        result[group_name] = {"stat": stat, "p": p}
+        all_normally_distributed &= p > 0.005
+    return all_normally_distributed, result
 
 
-def run_krushal_test(dataset: dict, dimension: str):
+def run_krushal_test(dataset: dict, dimension: str) -> tuple[bool, dict]:
     print(f"Krushal test on dimension: {dimension}")
 
     dimension_data = [value[dimension] for key, value in dataset.items()]
@@ -59,16 +61,18 @@ def run_krushal_test(dataset: dict, dimension: str):
     print(f"H = {stat:3f}")
     print(f"p-value = {p:3f}")
 
-    if p > 0.05:
-        print("No significant difference (fail to reject H0)")
-    else:
-        print("Significant difference (reject H0)")
-    print()
+    return p > 0.05, {"stat": stat, "p": p}
 
 
 if __name__ == "__main__":
     data = read_data_from_files(os.getcwd(), data_group_files)
     for dimension in column_names:
-        test_if_data_normally_distributed(data, dimension)
-    for dimension in column_names:
-        run_krushal_test(data, dimension)
+        all_normally_distributed, result = test_if_data_normally_distributed(
+            data, dimension
+        )
+        if all_normally_distributed:
+            # ANOVA test
+            pass
+        else:
+            # krushal test
+            nsd, result = run_krushal_test(data, dimension)
